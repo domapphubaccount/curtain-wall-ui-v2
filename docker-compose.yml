@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sprintforge
+      POSTGRES_PASSWORD: sprintforge
+      POSTGRES_DB: sprintforge
+    ports:
+      - "5432:5432"
+    volumes:
+      - sprintforge_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sprintforge"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  sprintforge_pgdata:
