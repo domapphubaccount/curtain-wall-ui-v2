@@ -13,12 +13,29 @@ export interface Epic {
 
 export interface Member {
   id: ID;
+  /** Global database user represented by this project membership. */
+  userId: ID;
   name: string;
   role: string;
   email: string;
   color: string;
   /** ISO timestamp of the last invite email composed for this member, or null if never invited. */
   invitedAt: string | null;
+}
+
+export type SystemRole = "ADMIN" | "USER";
+
+export interface AuthUser {
+  id: ID;
+  email: string;
+  name: string;
+  jobTitle: string;
+  color: string;
+  role: SystemRole;
+}
+
+export interface SystemUser extends AuthUser {
+  active: boolean;
 }
 
 export interface Attachment {
@@ -161,8 +178,6 @@ export interface Project {
 export interface AppState {
   projects: Project[];
   currentProjectId: ID;
-  /** Which team member you're "acting as" — gates who can start/stop a task's timer. */
-  currentMemberId: ID | null;
 }
 
 export const STATUS_LABELS: Record<StoryStatus, string> = {

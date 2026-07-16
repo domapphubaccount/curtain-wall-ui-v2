@@ -6,6 +6,7 @@ import { filesToAttachments, formatBytes } from "../files";
 import { activeTimeEntry, formatDuration, totalTrackedMs } from "../time";
 import type { Attachment, ID, Priority, Story, StoryStatus, StoryType } from "../types";
 import { POINT_SCALE, PRIORITY_LABELS, STATUS_LABELS, TYPE_LABELS } from "../types";
+import { useAuth } from "../auth";
 
 interface Props {
   /** Existing story to edit, or null to create a new one. */
@@ -17,6 +18,10 @@ interface Props {
 
 export default function StoryModal({ story, defaultSprintId = null, onClose }: Props) {
   const { project, dispatch } = useStore();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
+  const assignedMember = story?.assigneeId ? project.members.find((member) => member.id === story.assigneeId) : undefined;
+  const canEdit = isAdmin || (!!story && assignedMember?.userId === user?.id);
 
   const [title, setTitle] = useState(story?.title ?? "");
   const [description, setDescription] = useState(story?.description ?? "");
@@ -95,6 +100,8 @@ export default function StoryModal({ story, defaultSprintId = null, onClose }: P
 
   return (
     <Modal title={story ? `Edit ${story.key}` : "Create work item"} onClose={onClose}>
+      {!canEdit && <div className="read-only-notice">You can view this task, but only its assignee or an administrator can edit it.</div>}
+      <fieldset className="story-editor-fields" disabled={!canEdit}>
       <div className="form-field">
         <label>Title</label>
         <input
@@ -152,7 +159,7 @@ export default function StoryModal({ story, defaultSprintId = null, onClose }: P
         </div>
         <div className="form-field">
           <label>Assignee</label>
-          <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+          <select value={assigneeId} disabled={!isAdmin} onChange={(e) => setAssigneeId(e.target.value)}>
             <option value="">Unassigned</option>
             {project.members.map((m) => (
               <option key={m.id} value={m.id}>{m.name}</option>
@@ -338,6 +345,7 @@ export default function StoryModal({ story, defaultSprintId = null, onClose }: P
           </div>
         )}
       </div>
+      </fieldset>
       {story && (
         <div className="form-field">
           <label>Time tracking</label>
@@ -345,7 +353,7 @@ export default function StoryModal({ story, defaultSprintId = null, onClose }: P
         </div>
       )}
       <div className="modal-actions">
-        {story && (
+        {story && isAdmin && (
           <button
             className="btn btn-danger left"
             onClick={() => {
@@ -359,7 +367,7 @@ export default function StoryModal({ story, defaultSprintId = null, onClose }: P
           </button>
         )}
         <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" onClick={save} disabled={!title.trim()}>
+        <button className="btn btn-primary" onClick={save} disabled={!canEdit || !title.trim()}>
           {story ? "Save changes" : "Create"}
         </button>
       </div>
@@ -368,7 +376,8 @@ export default function StoryModal({ story, defaultSprintId = null, onClose }: P
 }
 
 function TimeTrackingSection({ storyId }: { storyId: ID }) {
-  const { project, state, dispatch } = useStore();
+  const { project, dispatch } = useStore();
+  const { user } = useAuth();
   const [, setTick] = useState(0);
   const story = project.stories.find((s) => s.id === storyId);
   const running = story ? activeTimeEntry(story) : undefined;
@@ -386,15 +395,16 @@ function TimeTrackingSection({ storyId }: { storyId: ID }) {
   }
 
   const assignee = project.members.find((m) => m.id === story.assigneeId);
-  const isMe = !!state.currentMemberId && state.currentMemberId === story.assigneeId;
+  const isMe = assignee?.userId === user?.id;
+  const canTrack = user?.role === "ADMIN" || isMe;
 
   return (
     <div className="time-track-panel">
       <div className="time-track-head">
         <button
           className="btn btn-sm btn-primary"
-          disabled={!isMe}
-          title={isMe ? undefined : `Only ${assignee?.name ?? "the assignee"} can start or stop this timer`}
+          disabled={!canTrack}
+          title={canTrack ? undefined : `Only ${assignee?.name ?? "the assignee"} or an administrator can use this timer`}
           onClick={() => {
             if (running) dispatch({ type: "story/timerStop", id: story.id });
             else dispatch({ type: "story/timerStart", id: story.id });

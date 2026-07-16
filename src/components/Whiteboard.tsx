@@ -5,6 +5,7 @@ import type { Attachment, ID, Story, WBEdge, WBGroup, WBNode, WBShape, Whiteboar
 import { FONT_OPTIONS, NOTE_COLORS, PEN_COLORS, TEXT_COLORS } from "../types";
 import { Avatar, Modal, PointsBadge, PriorityIcon, TypeIcon } from "./common";
 import StoryModal from "./StoryModal";
+import { useAuth } from "../auth";
 
 const GRID = 22;
 const MIN_SCALE = 0.25;
@@ -178,6 +179,8 @@ function roundedPathD(points: { x: number; y: number }[], radius: number): strin
 
 export default function Whiteboard() {
   const { project, dispatch } = useStore();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const wb = project.whiteboards.find((b) => b.id === project.activeWhiteboardId) ?? project.whiteboards[0];
   const [renamingBoardId, setRenamingBoardId] = useState<ID | null>(null);
   const [newBoardMenuOpen, setNewBoardMenuOpen] = useState(false);
@@ -811,12 +814,12 @@ export default function Whiteboard() {
                 className="wb-board-tab-btn"
                 title="Double-click to rename"
                 onClick={() => dispatch({ type: "wb/setActiveBoard", id: b.id })}
-                onDoubleClick={() => setRenamingBoardId(b.id)}
+                onDoubleClick={() => { if (isAdmin) setRenamingBoardId(b.id); }}
               >
                 <span className="wb-board-tab-icon">{b.kind === "html" ? "</>" : "▦"}</span> {b.name}
               </button>
             )}
-            {project.whiteboards.length > 1 && (
+            {isAdmin && project.whiteboards.length > 1 && (
               <button
                 className="wb-board-tab-close"
                 title="Delete this whiteboard"
@@ -831,7 +834,7 @@ export default function Whiteboard() {
             )}
           </div>
         ))}
-        <div className="wb-board-tab-add-wrap">
+        {isAdmin && <div className="wb-board-tab-add-wrap">
           <button
             className="wb-board-tab-add"
             title="New whiteboard"
@@ -859,23 +862,24 @@ export default function Whiteboard() {
               </button>
             </div>
           )}
-        </div>
+        </div>}
       </div>
 
       {wb.kind === "html" ? (
         <HtmlBoardView
           key={wb.id}
           board={wb}
+          readOnly={!isAdmin}
           onSave={(html) => dispatch({ type: "wb/updateBoardHtml", id: wb.id, html })}
         />
       ) : (
       <>
       <div
         ref={containerRef}
-        className={`wb-viewport${dropHover ? " wb-drop-hover" : ""}`}
+        className={`wb-viewport${dropHover ? " wb-drop-hover" : ""}${isAdmin ? "" : " wb-readonly"}`}
         style={{ backgroundSize: `${gridSize}px ${gridSize}px`, backgroundPosition: bgPos }}
         onMouseDown={onCanvasMouseDown}
-        onDoubleClick={onCanvasDoubleClick}
+        onDoubleClick={isAdmin ? onCanvasDoubleClick : undefined}
         onWheel={onWheel}
         onDragOver={(e) => {
           if (!e.dataTransfer.types.includes("Files")) return;
@@ -885,7 +889,7 @@ export default function Whiteboard() {
         onDragLeave={(e) => {
           if (e.target === e.currentTarget) setDropHover(false);
         }}
-        onDrop={handleCanvasFileDrop}
+        onDrop={isAdmin ? handleCanvasFileDrop : undefined}
       >
         <div
           className="wb-canvas"
@@ -1420,7 +1424,7 @@ export default function Whiteboard() {
           <button onClick={() => zoomBy(1.2)}>+</button>
         </div>
 
-        <div className="wb-toolbar" onMouseDown={(e) => e.stopPropagation()}>
+        {isAdmin && <div className="wb-toolbar" onMouseDown={(e) => e.stopPropagation()}>
           <button
             className={`wb-tool-btn${tool === "select" ? " active" : ""}`}
             title="Select"
@@ -1540,7 +1544,7 @@ export default function Whiteboard() {
               🗑
             </button>
           )}
-        </div>
+        </div>}
       </div>
 
       {taskPickerOpen && (
@@ -1622,9 +1626,11 @@ function TaskPickerModal({
 
 function HtmlBoardView({
   board,
+  readOnly,
   onSave,
 }: {
   board: Whiteboard;
+  readOnly: boolean;
   onSave: (html: string) => void;
 }) {
   const [html, setHtml] = useState(board.html ?? "");
@@ -1641,17 +1647,17 @@ function HtmlBoardView({
     <div className="wb-html-board">
       <div className="wb-html-board-bar">
         <span className="wb-html-board-label">HTML</span>
-        <div className="wb-html-board-bar-actions">
+        {!readOnly && <div className="wb-html-board-bar-actions">
           <button className="btn btn-sm" onClick={() => setEditorVisible((v) => !v)}>
             {editorVisible ? "Hide editor" : "Show editor"}
           </button>
           <button className="btn btn-sm btn-primary" disabled={!dirty} onClick={commit}>
             {dirty ? "Save changes" : "Saved"}
           </button>
-        </div>
+        </div>}
       </div>
       <div className="wb-html-board-body">
-        {editorVisible && (
+        {!readOnly && editorVisible && (
           <textarea
             autoFocus
             className="wb-html-board-textarea"

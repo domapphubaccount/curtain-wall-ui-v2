@@ -1,6 +1,14 @@
 # SprintForge
 
-A Scrum/Agile product management web app built with React + TypeScript + Vite. No backend required — all data is stored in your browser's localStorage and the app ships with a sample project ("NovaCart") so every screen has data on first launch.
+A company-internal Scrum/Agile product management app built with React, Express, Prisma, and PostgreSQL. Projects, tasks, project teams, and authenticated users are stored in the database; NovaCart demo data is seeded automatically for a useful first run.
+
+## Access model
+
+- Every authenticated employee can view every project, task, report, file, and team.
+- Administrators create and manage users, project teams, projects, tasks, sprints, epics, files, and whiteboards.
+- A normal user can edit every field, status, attachment, and timer on tasks assigned to their own account.
+- Normal users cannot create/delete/reassign tasks or change tasks assigned to another person.
+- Permissions are enforced by the API in addition to role-aware frontend controls.
 
 ## Features
 
@@ -39,6 +47,15 @@ Open [http://localhost:5173](http://localhost:5173). The API is available at
 Source files are mounted into the containers, so frontend and API changes reload automatically.
 PostgreSQL data is kept in a named Docker volume between restarts.
 
+Default development accounts:
+
+- Administrator: `admin@sprintforge.local` / `Admin123!`
+- Seed users: `aisha@company.local`, `diego@company.local`, `mei@company.local`, and
+  `tom@company.local`, all using `SprintForge123!`
+
+Copy `.env.example` to `.env` and change the bootstrap passwords and `JWT_SECRET` before sharing
+the app. Existing account passwords are not reset when containers restart.
+
 Useful commands:
 
 ```bash
@@ -75,6 +92,5 @@ src/
     ProjectModal.tsx     # create project / project settings (team, rename, delete)
 ```
 
-All views (dashboard, backlog, board, reports) always show the currently selected project. State is saved under the `sprintforge-state-v2` localStorage key; an existing single-project v1 save is migrated automatically on first load.
-
-Use the **Reset demo data** button in the sidebar to restore the sample project at any time.
+All views always show the currently selected database-backed project. Browser storage is only a
+temporary UI cache; PostgreSQL and API authorization are authoritative.

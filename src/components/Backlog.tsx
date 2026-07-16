@@ -17,6 +17,7 @@ import {
   formatDate,
 } from "./common";
 import StoryModal from "./StoryModal";
+import { useAuth } from "../auth";
 
 function ListColumns() {
   return (
@@ -35,6 +36,8 @@ function ListColumns() {
 
 export default function Backlog() {
   const { project, dispatch } = useStore();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const [editing, setEditing] = useState<Story | null>(null);
   const [creatingIn, setCreatingIn] = useState<ID | null | "closed">("closed");
   const [showSprintModal, setShowSprintModal] = useState(false);
@@ -51,7 +54,9 @@ export default function Backlog() {
     e.preventDefault();
     setDragOver(null);
     const storyId = e.dataTransfer.getData("text/story-id");
-    if (storyId) dispatch({ type: "story/assignSprint", id: storyId, sprintId: target });
+    const story = project.stories.find((item) => item.id === storyId);
+    const assignee = story?.assigneeId ? project.members.find((member) => member.id === story.assigneeId) : undefined;
+    if (story && (isAdmin || assignee?.userId === user?.id)) dispatch({ type: "story/assignSprint", id: storyId, sprintId: target });
   }
 
   function dropProps(zone: string, target: ID | null) {
@@ -72,7 +77,7 @@ export default function Backlog() {
       <div
         key={story.id}
         className="story-row"
-        draggable
+        draggable={isAdmin || assignee?.userId === user?.id}
         onDragStart={(e) => {
           e.dataTransfer.setData("text/story-id", story.id);
           e.dataTransfer.effectAllowed = "move";
@@ -117,7 +122,7 @@ export default function Backlog() {
             {formatDate(sprint.startDate)} – {formatDate(sprint.endDate)}
           </span>
           <span className="count">{storyPoints(done)}/{storyPoints(stories)} pts</span>
-          {sprint.state === "planned" && (
+          {isAdmin && sprint.state === "planned" && (
             <>
               <button
                 className="btn btn-sm btn-primary"
@@ -139,7 +144,7 @@ export default function Backlog() {
               </button>
             </>
           )}
-          {sprint.state === "active" && (
+          {isAdmin && sprint.state === "active" && (
             <button className="btn btn-sm" onClick={() => setCompleting(sprint)}>
               Complete sprint
             </button>
@@ -155,12 +160,12 @@ export default function Backlog() {
             <div className="drop-hint">Drag items here to plan this sprint</div>
           )}
         </div>
-        <QuickCreate
+        {isAdmin && <QuickCreate
           open={creatingIn === sprint.id}
           onOpen={() => setCreatingIn(sprint.id)}
           onClose={() => setCreatingIn("closed")}
           sprintId={sprint.id}
-        />
+        />}
       </div>
     );
   }
@@ -172,10 +177,10 @@ export default function Backlog() {
           <h1>Backlog</h1>
           <div className="sub">Plan sprints by dragging items between sections. Click a title to edit.</div>
         </div>
-        <div className="actions">
+        {isAdmin && <div className="actions">
           <button className="btn" onClick={() => setShowEpicModal(true)}>+ New epic</button>
           <button className="btn" onClick={() => setShowSprintModal(true)}>+ New sprint</button>
-        </div>
+        </div>}
       </div>
 
       <div className="filters">
@@ -205,12 +210,12 @@ export default function Backlog() {
         >
           {backlog.length === 0 && <div className="drop-hint">Backlog is empty</div>}
         </div>
-        <QuickCreate
+        {isAdmin && <QuickCreate
           open={creatingIn === null}
           onOpen={() => setCreatingIn(null)}
           onClose={() => setCreatingIn("closed")}
           sprintId={null}
-        />
+        />}
       </div>
 
       {editing && <StoryModal story={editing} onClose={() => setEditing(null)} />}

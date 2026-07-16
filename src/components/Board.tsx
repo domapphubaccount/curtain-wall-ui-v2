@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { DragEvent } from "react";
 import { activeSprint, sprintStories, storyPoints, useStore } from "../store";
 import type { ID, Story, StoryStatus } from "../types";
+import { useAuth } from "../auth";
 import { BOARD_COLUMNS, STATUS_LABELS } from "../types";
 import {
   AttachmentBadge,
@@ -18,6 +19,7 @@ import StoryModal from "./StoryModal";
 
 export default function Board() {
   const { project, dispatch } = useStore();
+  const { user } = useAuth();
   const [editing, setEditing] = useState<Story | null>(null);
   const [dragOverCol, setDragOverCol] = useState<StoryStatus | null>(null);
   const [assigneeFilter, setAssigneeFilter] = useState<ID | "">("");
@@ -52,7 +54,9 @@ export default function Board() {
     e.preventDefault();
     setDragOverCol(null);
     const id = e.dataTransfer.getData("text/story-id");
-    if (id) dispatch({ type: "story/move", id, status });
+    const story = project.stories.find((item) => item.id === id);
+    const assignee = story?.assigneeId ? project.members.find((member) => member.id === story.assigneeId) : undefined;
+    if (story && (user?.role === "ADMIN" || assignee?.userId === user?.id)) dispatch({ type: "story/move", id, status });
   }
 
   return (
@@ -105,7 +109,7 @@ export default function Board() {
                   <div
                     key={story.id}
                     className="card"
-                    draggable
+                    draggable={user?.role === "ADMIN" || assignee?.userId === user?.id}
                     onDragStart={(e) => {
                       e.dataTransfer.setData("text/story-id", story.id);
                       e.dataTransfer.effectAllowed = "move";

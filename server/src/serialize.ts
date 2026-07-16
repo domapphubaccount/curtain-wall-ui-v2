@@ -9,6 +9,7 @@ export function serializeEpic(e: Epic) {
 export function serializeMember(m: Member) {
   return {
     id: m.id,
+    userId: m.userId,
     name: m.name,
     role: m.role,
     email: m.email,
@@ -49,6 +50,8 @@ export function serializeStory(s: Story) {
     startDate: s.startDate,
     dueDate: s.dueDate,
     dependsOn: s.dependsOn,
+    attachments: s.attachments,
+    timeEntries: s.timeEntries,
   };
 }
 
@@ -100,6 +103,9 @@ export function serializeProject(p: FullProject) {
     name: p.name,
     key: p.key,
     seq: p.seq,
+    whiteboards: p.whiteboards,
+    activeWhiteboardId: p.activeWhiteboardId,
+    files: p.files,
     epics: p.epics.map(serializeEpic),
     members: p.members.map(serializeMember),
     sprints: p.sprints.map(serializeSprint),

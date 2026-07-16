@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useStore } from "../store";
 import type { Epic, Member, Priority, Story, StoryType } from "../types";
 import { activeTimeEntry, formatDuration, totalTrackedMs } from "../time";
+import { useAuth } from "../auth";
 
 export function Avatar({ member, title }: { member: Member | null | undefined; title?: string }) {
   if (!member) {
@@ -73,9 +74,10 @@ export function AttachmentBadge({ count }: { count: number }) {
   );
 }
 
-/** Start/stop control for a task's timer — only the assigned member (as picked in "Acting as") can operate it. */
+/** Start/stop control for a task's timer — available to the real assignee and administrators. */
 export function TimerControl({ story }: { story: Story }) {
-  const { state, dispatch } = useStore();
+  const { project, dispatch } = useStore();
+  const { user } = useAuth();
   const [, setTick] = useState(0);
   const running = activeTimeEntry(story);
 
@@ -87,19 +89,20 @@ export function TimerControl({ story }: { story: Story }) {
 
   if (!story.assigneeId) return null;
 
-  const isMe = !!state.currentMemberId && state.currentMemberId === story.assigneeId;
+  const assignee = project.members.find((member) => member.id === story.assigneeId);
+  const canTrack = user?.role === "ADMIN" || assignee?.userId === user?.id;
   const totalMs = totalTrackedMs(story);
 
   return (
     <span className="timer-control">
       <button
         className={`timer-btn${running ? " running" : ""}`}
-        disabled={!isMe}
-        title={isMe ? (running ? "Stop timer" : "Start timer") : "Only the assignee can start or stop this timer"}
+        disabled={!canTrack}
+        title={canTrack ? (running ? "Stop timer" : "Start timer") : "Only the assignee or an administrator can use this timer"}
         onClick={(e) => {
           e.stopPropagation();
           if (running) dispatch({ type: "story/timerStop", id: story.id });
-          else if (isMe) dispatch({ type: "story/timerStart", id: story.id });
+          else if (canTrack) dispatch({ type: "story/timerStart", id: story.id });
         }}
       >
         {running ? "⏹" : "▶"}

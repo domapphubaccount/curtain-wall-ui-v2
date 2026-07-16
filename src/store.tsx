@@ -1,9 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useReducer } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useReducer, useState } from "react";
 import type { ReactNode } from "react";
 import type { AppState, Attachment, Epic, ID, Member, Project, Sprint, Story, StoryStatus, WBEdge, WBGroup, WBNode, Whiteboard, WhiteboardKind } from "./types";
 import { emptyWhiteboard } from "./types";
-import { createSeedState, MEMBER_COLORS } from "./data";
-import { apiCreateProject, apiDeleteProject, apiGetProject, apiSyncProject, isApiConfigured } from "./api";
+import { createSeedState } from "./data";
+import { apiCreateProject, apiDeleteProject, apiGetProject, apiListProjects, apiSyncProject } from "./api";
+import { useAuth } from "./auth";
 
 const STORAGE_KEY = "sprintforge-state-v2";
 const LEGACY_KEY = "sprintforge-state-v1";
@@ -16,17 +17,15 @@ export type Action =
   | { type: "story/assignSprint"; id: ID; sprintId: ID | null }
   | { type: "story/timerStart"; id: ID }
   | { type: "story/timerStop"; id: ID }
-  | { type: "identity/setCurrentMember"; id: ID | null }
   | { type: "sprint/add"; name: string; goal: string; startDate: string; endDate: string }
   | { type: "sprint/update"; id: ID; patch: Partial<Sprint> }
   | { type: "sprint/start"; id: ID }
   | { type: "sprint/complete"; id: ID; moveIncompleteTo: ID | null }
   | { type: "sprint/delete"; id: ID }
   | { type: "epic/add"; name: string; color: string }
-  | { type: "member/add"; name: string; role: string; email: string }
+  | { type: "member/add"; member: Member }
   | { type: "member/update"; id: ID; patch: Partial<Member> }
   | { type: "member/remove"; id: ID }
-  | { type: "member/invite"; id: ID }
   | { type: "project/add"; name: string; key: string; members: Member[] }
   | { type: "project/update"; patch: { name?: string; key?: string; members?: Member[] } }
   | { type: "project/delete"; id: ID }
@@ -51,7 +50,8 @@ export type Action =
   | { type: "file/add"; files: Attachment[] }
   | { type: "file/delete"; id: ID }
   | { type: "state/reset" }
-  | { type: "project/hydrate"; project: Project };
+  | { type: "project/hydrate"; project: Project }
+  | { type: "projects/hydrateAll"; projects: Project[] };
 
 export function uid(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -156,8 +156,6 @@ function reducer(state: AppState, action: Action): AppState {
           };
         }),
       }));
-    case "identity/setCurrentMember":
-      return { ...state, currentMemberId: action.id };
     case "sprint/add":
       return withProject(state, (p) => ({
         ...p,
@@ -232,17 +230,7 @@ function reducer(state: AppState, action: Action): AppState {
     case "member/add":
       return withProject(state, (p) => ({
         ...p,
-        members: [
-          ...p.members,
-          {
-            id: uid(),
-            name: action.name,
-            role: action.role || "Team member",
-            email: action.email,
-            color: MEMBER_COLORS[p.members.length % MEMBER_COLORS.length],
-            invitedAt: null,
-          },
-        ],
+        members: [...p.members, action.member],
       }));
     case "member/update":
       return withProject(state, (p) => ({
@@ -254,11 +242,6 @@ function reducer(state: AppState, action: Action): AppState {
         ...p,
         members: p.members.filter((m) => m.id !== action.id),
         stories: p.stories.map((s) => (s.assigneeId === action.id ? { ...s, assigneeId: null } : s)),
-      }));
-    case "member/invite":
-      return withProject(state, (p) => ({
-        ...p,
-        members: p.members.map((m) => (m.id === action.id ? { ...m, invitedAt: new Date().toISOString() } : m)),
       }));
     case "project/add": {
       const board = emptyWhiteboard(uid(), "Main");
@@ -410,8 +393,18 @@ function reducer(state: AppState, action: Action): AppState {
     case "project/hydrate":
       return {
         ...state,
-        projects: state.projects.map((p) => (p.id === action.project.id ? action.project : p)),
+        projects: state.projects.map((p) => (p.id === action.project.id ? withProjectDefaults(action.project) : p)),
       };
+    case "projects/hydrateAll": {
+      const projects = action.projects.map(withProjectDefaults);
+      return {
+        ...state,
+        projects,
+        currentProjectId: projects.some((project) => project.id === state.currentProjectId)
+          ? state.currentProjectId
+          : projects[0]?.id ?? "",
+      };
+    }
     default:
       return state;
   }
@@ -427,42 +420,43 @@ interface LegacyState {
   seq: number;
 }
 
+function withProjectDefaults(p: Project): Project {
+  const legacyBoard = (p as unknown as { whiteboard?: Whiteboard }).whiteboard;
+  const whiteboards = (
+    p.whiteboards && p.whiteboards.length > 0
+      ? p.whiteboards
+      : [legacyBoard ? { ...legacyBoard, id: legacyBoard.id ?? uid(), name: legacyBoard.name ?? "Main" } : emptyWhiteboard(uid(), "Main")]
+  ).map((board) => ({ ...board, groups: board.groups ?? [], kind: board.kind ?? "canvas", html: board.html ?? "" }));
+  const activeWhiteboardId = whiteboards.some((board) => board.id === p.activeWhiteboardId)
+    ? p.activeWhiteboardId
+    : whiteboards[0].id;
+  return {
+    ...p,
+    whiteboards,
+    activeWhiteboardId,
+    files: p.files ?? [],
+    stories: p.stories.map((story) => ({
+      ...story,
+      startDate: story.startDate ?? null,
+      dueDate: story.dueDate ?? null,
+      dependsOn: story.dependsOn ?? [],
+      attachments: story.attachments ?? [],
+      timeEntries: story.timeEntries ?? [],
+    })),
+    members: p.members.map((member) => ({
+      ...member,
+      userId: member.userId ?? "",
+      email: member.email ?? "",
+      invitedAt: member.invitedAt ?? null,
+    })),
+  };
+}
+
 /** Backfills fields added after a save was written, so older localStorage data keeps working. */
 function withDefaults(state: AppState): AppState {
   return {
     ...state,
-    currentMemberId: state.currentMemberId ?? null,
-    projects: state.projects.map((p) => {
-      // Pre-multi-board saves had a single `whiteboard` object instead of a `whiteboards` array.
-      const legacyBoard = (p as unknown as { whiteboard?: Whiteboard }).whiteboard;
-      const whiteboards = (
-        p.whiteboards && p.whiteboards.length > 0
-          ? p.whiteboards
-          : [legacyBoard ? { ...legacyBoard, id: legacyBoard.id ?? uid(), name: legacyBoard.name ?? "Main" } : emptyWhiteboard(uid(), "Main")]
-      ).map((b) => ({ ...b, groups: b.groups ?? [], kind: b.kind ?? "canvas", html: b.html ?? "" }));
-      const activeWhiteboardId = whiteboards.some((b) => b.id === p.activeWhiteboardId)
-        ? p.activeWhiteboardId
-        : whiteboards[0].id;
-      return {
-        ...p,
-        whiteboards,
-        activeWhiteboardId,
-        files: p.files ?? [],
-        stories: p.stories.map((s) => ({
-          ...s,
-          startDate: s.startDate ?? null,
-          dueDate: s.dueDate ?? null,
-          dependsOn: s.dependsOn ?? [],
-          attachments: s.attachments ?? [],
-          timeEntries: s.timeEntries ?? [],
-        })),
-        members: p.members.map((m) => ({
-          ...m,
-          email: m.email ?? "",
-          invitedAt: m.invitedAt ?? null,
-        })),
-      };
-    }),
+    projects: state.projects.map(withProjectDefaults),
   };
 }
 
@@ -489,7 +483,7 @@ function loadInitialState(): AppState {
         seq: legacy.seq,
       };
       localStorage.removeItem(LEGACY_KEY);
-      return withDefaults({ projects: [project], currentProjectId: project.id, currentMemberId: null });
+      return withDefaults({ projects: [project], currentProjectId: project.id });
     }
   } catch {
     // Corrupt storage — fall through to seed data.
@@ -502,67 +496,107 @@ interface StoreValue {
   /** The currently selected project. */
   project: Project;
   dispatch: React.Dispatch<Action>;
+  ready: boolean;
+  error: string | null;
 }
 
 const StoreContext = createContext<StoreValue | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
   const [state, dispatch] = useReducer(reducer, undefined, loadInitialState);
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const bootstrappedRef = useRef(new Set<ID>());
+  const remoteProjectIdsRef = useRef(new Set<ID>());
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
-  // Wrap dispatch so a project deletion also removes it on the server (fire-and-forget).
-  const apiDispatch = useCallback((action: Action) => {
-    if (action.type === "project/delete" && isApiConfigured()) {
-      apiDeleteProject(action.id);
-    }
-    dispatch(action);
+  useEffect(() => {
+    let active = true;
+    apiListProjects()
+      .then((projects) => {
+        if (!active) return;
+        remoteProjectIdsRef.current = new Set(projects.map((project) => project.id));
+        dispatch({ type: "projects/hydrateAll", projects });
+        setError(null);
+      })
+      .catch((requestError: Error) => {
+        if (active) setError(requestError.message);
+      })
+      .finally(() => {
+        if (active) setReady(true);
+      });
+    return () => { active = false; };
   }, []);
 
-  // Debounced push of the current project to the backend, when one is configured and reachable.
-  // Silently does nothing if VITE_API_URL isn't set or the server can't be reached — the app
-  // keeps working purely off localStorage either way.
+  const apiDispatch = useCallback((action: Action) => {
+    const currentProject = state.projects.find((project) => project.id === state.currentProjectId);
+    const isAdmin = user?.role === "ADMIN";
+    const storyAction = action.type.startsWith("story/");
+    const storyId = storyAction && "id" in action ? action.id : null;
+    const story = storyId ? currentProject?.stories.find((item) => item.id === storyId) : undefined;
+    const assignee = story?.assigneeId
+      ? currentProject?.members.find((member) => member.id === story.assigneeId)
+      : undefined;
+    const assignedToCurrentUser = !!user && assignee?.userId === user.id;
+    const userEditableStoryAction = ["story/update", "story/move", "story/assignSprint", "story/timerStart", "story/timerStop"].includes(action.type);
+    const triesToReassign = action.type === "story/update" && action.patch.assigneeId !== undefined && action.patch.assigneeId !== story?.assigneeId;
+    const allowed = isAdmin || action.type === "project/switch" || action.type === "wb/setActiveBoard" || (assignedToCurrentUser && userEditableStoryAction && !triesToReassign);
+    if (!allowed) return;
+
+    if (action.type === "project/delete") {
+      apiDeleteProject(action.id).catch((requestError: Error) => setError(requestError.message));
+      remoteProjectIdsRef.current.delete(action.id);
+    }
+    dispatch(action);
+  }, [state, user]);
+
   useEffect(() => {
-    if (!isApiConfigured()) return;
+    if (!ready) return;
     const project = state.projects.find((p) => p.id === state.currentProjectId);
-    if (!project) return;
+    if (!project || !remoteProjectIdsRef.current.has(project.id)) return;
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
-      apiSyncProject(project);
+      apiSyncProject(project)
+        .then(() => setError(null))
+        .catch(async (requestError: Error) => {
+          setError(requestError.message);
+          try {
+            dispatch({ type: "project/hydrate", project: await apiGetProject(project.id) });
+          } catch {
+            // Keep the visible error from the original failed mutation.
+          }
+        });
     }, 600);
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     };
-  }, [state]);
+  }, [state, ready]);
 
-  // Once per project: pull the server's copy if it already exists there, otherwise create it
-  // remotely from what we have locally so future edits have somewhere to sync to.
   useEffect(() => {
-    if (!isApiConfigured()) return;
+    if (!ready || user?.role !== "ADMIN") return;
     const project = state.projects.find((p) => p.id === state.currentProjectId);
-    if (!project || bootstrappedRef.current.has(project.id)) return;
-    bootstrappedRef.current.add(project.id);
-    (async () => {
-      const remote = await apiGetProject(project.id);
-      if (remote) {
-        dispatch({ type: "project/hydrate", project: remote });
-      } else {
-        const created = await apiCreateProject(project);
-        if (created) apiSyncProject(project);
-      }
-    })();
-  }, [state.currentProjectId]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!project || remoteProjectIdsRef.current.has(project.id)) return;
+    remoteProjectIdsRef.current.add(project.id);
+    apiCreateProject(project)
+      .then((created) => {
+        dispatch({ type: "project/hydrate", project: created });
+        setError(null);
+      })
+      .catch((requestError: Error) => {
+        remoteProjectIdsRef.current.delete(project.id);
+        setError(requestError.message);
+      });
+  }, [state.currentProjectId, ready, user?.role]);
 
   const value = useMemo(() => {
     const project =
       state.projects.find((p) => p.id === state.currentProjectId) ?? state.projects[0];
-    return { state, project, dispatch: apiDispatch };
-  }, [state, apiDispatch]);
+    return { state, project, dispatch: apiDispatch, ready, error };
+  }, [state, apiDispatch, ready, error]);
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 

@@ -1,23 +1,18 @@
 # SprintForge API
 
-A small Express + Prisma (PostgreSQL) backend for SprintForge. The frontend keeps working purely
-off `localStorage` if this isn't running or `VITE_API_URL` isn't set — this is additive, not a
-replacement.
+A small Express + Prisma (PostgreSQL) backend for SprintForge. It is the authoritative source for
+users, project membership, projects, and tasks.
 
 ## How syncing works
 
-The frontend still computes state client-side with its existing reducer (instant, optimistic UI).
-When `VITE_API_URL` is set, `StoreProvider` additionally:
+The frontend retains its reducer for responsive UI and sends a debounced project snapshot. The API
+reconciles admin changes transactionally. For normal users it computes the allowed delta and only
+accepts changes to tasks assigned to their authenticated database account; all other mutations are
+rejected with `403` and the frontend reloads the authoritative project.
 
-1. On first load of a project, calls `GET /api/projects/:id`. If it exists on the server, that
-   becomes the source of truth (overwrites local state for that project). If not, it `POST`s the
-   local copy to create it there.
-2. After every change, waits 600ms of inactivity then `PUT`s the whole current project — the
-   server reconciles every child table (stories, sprints, epics, members, whiteboard) in one
-   transaction: upserts what's present, deletes what's missing.
-
-If the server is unreachable, every API call fails silently and the app carries on with
-`localStorage` only.
+JWT sessions are stored in HTTP-only, SameSite cookies. Passwords are bcrypt-hashed, login attempts
+are rate-limited, inactive accounts are rejected, and the system always preserves at least one
+active administrator.
 
 ## Local development
 
@@ -28,8 +23,8 @@ docker compose up --build
 ```
 
 Compose waits for PostgreSQL, generates the Prisma client, applies the current schema with
-`prisma db push`, and then starts the API with hot reload. No manual `.env` files or database setup
-are needed for this workflow.
+`prisma db push`, idempotently creates the initial administrator and demo data, and then starts the
+API with hot reload. No manual database setup is needed for this workflow.
 
 To run only the API directly with npm, first start or provide a Postgres instance:
 
@@ -38,6 +33,7 @@ cd server
 cp .env.example .env
 npm install
 npx prisma db push
+npm run db:bootstrap
 npm run dev                   # starts the API on http://localhost:4000
 ```
 
@@ -57,6 +53,9 @@ accounts:
 2. **The API server**, deployed from `server/` (it has a `Dockerfile`). Set env vars:
    - `DATABASE_URL` — the connection string from step 1.
    - `CORS_ORIGIN` — your deployed frontend's URL (comma-separated if there's more than one).
+   - `JWT_SECRET` — a random secret of at least 32 characters.
+   - `INITIAL_ADMIN_NAME`, `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD` — first-run admin.
+   - `COOKIE_SECURE=true` — required when the deployed app uses HTTPS.
    - `PORT` — most platforms set this for you.
    This repository does not currently contain versioned Prisma migrations. Run `npx prisma db push`
    as a deployment/release step before starting the production image, or add and commit migrations

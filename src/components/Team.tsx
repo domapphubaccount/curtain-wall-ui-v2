@@ -1,184 +1,140 @@
-import { useState } from "react";
-import { useStore } from "../store";
+import { useEffect, useMemo, useState } from "react";
+import { apiCreateUser, apiListUsers } from "../api";
+import { useAuth } from "../auth";
+import { MEMBER_COLORS } from "../data";
+import { uid, useStore } from "../store";
+import type { SystemRole, SystemUser } from "../types";
 import { Modal } from "./common";
-import type { Member } from "../types";
 
 function initials(name: string): string {
-  return name.split(" ").map((p) => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
-}
-
-function timeAgo(iso: string): string {
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000));
-  if (days <= 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 30) return `${days}d ago`;
-  return `${Math.floor(days / 30)}mo ago`;
-}
-
-function inviteMailto(member: Member, projectName: string): string {
-  const subject = encodeURIComponent(`You're invited to ${projectName} on SprintForge`);
-  const body = encodeURIComponent(
-    `Hi ${member.name || "there"},\n\n` +
-      `You've been added to the "${projectName}" project on SprintForge as ${member.role || "a team member"}.\n\n` +
-      `SprintForge is a working prototype with no server behind it yet, so there's no real sign-in link to include here — ` +
-      `once it's connected to a backend, this invite will carry a real "create your account" link.\n\n` +
-      `— Sent from SprintForge`
-  );
-  return `mailto:${encodeURIComponent(member.email)}?subject=${subject}&body=${body}`;
+  return name.split(" ").map((part) => part[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "?";
 }
 
 export default function Team() {
-  const { project } = useStore();
+  const { project, dispatch } = useStore();
+  const { user } = useAuth();
+  const [users, setUsers] = useState<SystemUser[]>([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [error, setError] = useState("");
+  const isAdmin = user?.role === "ADMIN";
+
+  function refreshUsers() {
+    if (!isAdmin) return;
+    apiListUsers().then(setUsers).catch((requestError: Error) => setError(requestError.message));
+  }
+
+  useEffect(refreshUsers, [isAdmin]);
 
   return (
     <>
       <div className="view-header">
-        <div>
-          <h1>Team</h1>
-          <div className="sub">Manage who's on {project.name} and invite new teammates by email.</div>
-        </div>
-        <div className="actions">
-          <button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add team member</button>
-        </div>
+        <div><h1>Team</h1><div className="sub">People assigned to {project.name}.</div></div>
+        {isAdmin && <div className="actions"><button className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add user</button></div>}
       </div>
-
-      <div className="panel team-notice">
-        ✉ SprintForge runs entirely in your browser — there's no server to send real email or create sign-ins yet.
-        "Send invite" opens a pre-written message in your own email app instead.
-      </div>
-
+      {error && <div className="form-error">{error}</div>}
       <div className="panel team-list">
-        <div className="team-row team-row-head">
-          <span>Member</span>
-          <span>Role</span>
-          <span>Email</span>
-          <span>Status</span>
-          <span />
-        </div>
-        {project.members.map((m) => (
-          <TeamRow key={m.id} member={m} />
+        <div className="team-row team-row-head"><span>Member</span><span>Role</span><span>Email</span><span>Access</span><span /></div>
+        {project.members.map((member) => (
+          <div className="team-row" key={member.id}>
+            <div className="team-member-cell"><span className="avatar" style={{ background: member.color }}>{initials(member.name)}</span><strong>{member.name}</strong></div>
+            <span>{member.role}</span>
+            <span>{member.email}</span>
+            <span className="status-pill status-done">Active</span>
+            <div className="team-row-actions">
+              {isAdmin && member.userId !== user?.id && (
+                <button className="btn btn-sm btn-ghost" onClick={() => {
+                  if (confirm(`Remove ${member.name} from this project? Their tasks will become unassigned.`)) {
+                    dispatch({ type: "member/remove", id: member.id });
+                  }
+                }}>Remove</button>
+              )}
+            </div>
+          </div>
         ))}
-        {project.members.length === 0 && (
-          <div className="drop-hint">No team members yet — add your first one above.</div>
-        )}
+        {project.members.length === 0 && <div className="drop-hint">No users have been added to this project.</div>}
       </div>
-
-      {showAdd && <AddMemberModal onClose={() => setShowAdd(false)} />}
+      {showAdd && (
+        <AddUserModal
+          users={users}
+          existingUserIds={new Set(project.members.map((member) => member.userId))}
+          onAdded={(addedUser) => {
+            dispatch({
+              type: "member/add",
+              member: {
+                id: uid(), userId: addedUser.id, name: addedUser.name, role: addedUser.jobTitle,
+                email: addedUser.email, color: addedUser.color, invitedAt: new Date().toISOString(),
+              },
+            });
+            refreshUsers();
+            setShowAdd(false);
+          }}
+          onClose={() => setShowAdd(false)}
+        />
+      )}
     </>
   );
 }
 
-function TeamRow({ member }: { member: Member }) {
-  const { project, dispatch } = useStore();
-
-  function update(patch: Partial<Member>) {
-    dispatch({ type: "member/update", id: member.id, patch });
-  }
-
-  const hasEmail = member.email.trim().length > 0;
-
-  return (
-    <div className="team-row">
-      <div className="team-member-cell">
-        <span className="avatar" style={{ background: member.color }}>{initials(member.name)}</span>
-        <input
-          className="team-inline-input"
-          value={member.name}
-          placeholder="Name"
-          onChange={(e) => update({ name: e.target.value })}
-        />
-      </div>
-      <input
-        className="team-inline-input"
-        value={member.role}
-        placeholder="Role"
-        onChange={(e) => update({ role: e.target.value })}
-      />
-      <input
-        className="team-inline-input"
-        type="email"
-        value={member.email}
-        placeholder="name@company.com"
-        onChange={(e) => update({ email: e.target.value })}
-      />
-      <span>
-        {member.invitedAt ? (
-          <span className="status-pill status-done" title={new Date(member.invitedAt).toLocaleString()}>
-            Invited {timeAgo(member.invitedAt)}
-          </span>
-        ) : (
-          <span className="status-pill status-todo">Not invited</span>
-        )}
-      </span>
-      <div className="team-row-actions">
-        {hasEmail ? (
-          <a
-            className="btn btn-sm"
-            href={inviteMailto(member, project.name)}
-            onClick={() => dispatch({ type: "member/invite", id: member.id })}
-          >
-            {member.invitedAt ? "Resend invite" : "Send invite"}
-          </a>
-        ) : (
-          <button className="btn btn-sm" disabled title="Add an email first">
-            Send invite
-          </button>
-        )}
-        <button
-          className="btn btn-sm btn-ghost"
-          title="Remove from team"
-          onClick={() => {
-            if (confirm(`Remove ${member.name || "this member"} from the team?`)) {
-              dispatch({ type: "member/remove", id: member.id });
-            }
-          }}
-        >
-          ✕
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function AddMemberModal({ onClose }: { onClose: () => void }) {
-  const { dispatch } = useStore();
+function AddUserModal({ users, existingUserIds, onAdded, onClose }: {
+  users: SystemUser[];
+  existingUserIds: Set<string>;
+  onAdded(user: SystemUser): void;
+  onClose(): void;
+}) {
+  const availableUsers = useMemo(() => users.filter((user) => user.active && !existingUserIds.has(user.id)), [users, existingUserIds]);
+  const [mode, setMode] = useState<"existing" | "new">(availableUsers.length ? "existing" : "new");
+  const [selectedId, setSelectedId] = useState(availableUsers[0]?.id ?? "");
   const [name, setName] = useState("");
-  const [role, setRole] = useState("");
   const [email, setEmail] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<SystemRole>("USER");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  function submit() {
-    if (!name.trim()) return;
-    dispatch({ type: "member/add", name: name.trim(), role: role.trim(), email: email.trim() });
-    onClose();
+  async function submit() {
+    setError("");
+    if (mode === "existing") {
+      const selected = availableUsers.find((user) => user.id === selectedId);
+      if (selected) onAdded(selected);
+      return;
+    }
+    if (!name.trim() || !email.trim() || password.length < 8) return;
+    setSaving(true);
+    try {
+      const created = await apiCreateUser({
+        name: name.trim(), email: email.trim(), password, jobTitle: jobTitle.trim() || "Team member",
+        role, color: MEMBER_COLORS[users.length % MEMBER_COLORS.length],
+      });
+      onAdded(created);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not create user");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
-    <Modal title="Add team member" onClose={onClose} narrow>
-      <div className="form-field">
-        <label>Name</label>
-        <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Priya Sharma" />
+    <Modal title="Add project user" onClose={onClose} narrow>
+      <div className="mode-tabs">
+        <button className={`btn btn-sm${mode === "existing" ? " btn-primary" : ""}`} onClick={() => setMode("existing")} disabled={!availableUsers.length}>Existing user</button>
+        <button className={`btn btn-sm${mode === "new" ? " btn-primary" : ""}`} onClick={() => setMode("new")}>Create account</button>
       </div>
-      <div className="form-field">
-        <label>Role</label>
-        <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="e.g. QA Engineer" />
-      </div>
-      <div className="form-field">
-        <label>Email</label>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="name@company.com"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
-          }}
-        />
-      </div>
-      <div className="modal-actions">
-        <button className="btn" onClick={onClose}>Cancel</button>
-        <button className="btn btn-primary" disabled={!name.trim()} onClick={submit}>Add member</button>
-      </div>
+      {error && <div className="form-error">{error}</div>}
+      {mode === "existing" ? (
+        <div className="form-field"><label>Company user</label><select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
+          {availableUsers.map((account) => <option value={account.id} key={account.id}>{account.name} — {account.email}</option>)}
+        </select></div>
+      ) : (
+        <>
+          <div className="form-field"><label>Name</label><input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></div>
+          <div className="form-field"><label>Email</label><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></div>
+          <div className="form-field"><label>Job title</label><input value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} /></div>
+          <div className="form-field"><label>Temporary password</label><input type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} /><small>At least 8 characters.</small></div>
+          <div className="form-field"><label>System access</label><select value={role} onChange={(event) => setRole(event.target.value as SystemRole)}><option value="USER">Normal user</option><option value="ADMIN">Administrator</option></select></div>
+        </>
+      )}
+      <div className="modal-actions"><button className="btn" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={() => void submit()} disabled={saving || (mode === "existing" ? !selectedId : !name.trim() || !email.trim() || password.length < 8)}>{saving ? "Creating…" : mode === "existing" ? "Add to project" : "Create and add"}</button></div>
     </Modal>
   );
 }

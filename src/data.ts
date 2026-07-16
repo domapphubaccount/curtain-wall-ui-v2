@@ -127,7 +127,7 @@ const seedStories: SeedStory[] = [
 
 export function createSeedState(): AppState {
   const project = createSeedProject();
-  return { projects: [project], currentProjectId: project.id, currentMemberId: null };
+  return { projects: [project], currentProjectId: project.id };
 }
 
 export function createSeedProject(): Project {
@@ -138,10 +138,10 @@ export function createSeedProject(): Project {
     { id: "e4", name: "Admin Console", color: "#ec4899" },
   ];
   const members = [
-    { id: "m1", name: "Aisha Khan", role: "Tech Lead", email: "aisha.khan@novacart.example", color: "#6366f1", invitedAt: iso(-40) },
-    { id: "m2", name: "Diego Reyes", role: "Frontend Dev", email: "diego.reyes@novacart.example", color: "#0ea5e9", invitedAt: iso(-40) },
-    { id: "m3", name: "Mei Lin", role: "Backend Dev", email: "mei.lin@novacart.example", color: "#10b981", invitedAt: iso(-40) },
-    { id: "m4", name: "Tom Okafor", role: "Full-stack Dev", email: "tom.okafor@novacart.example", color: "#f97316", invitedAt: null },
+    { id: "m1", userId: "seed-aisha", name: "Aisha Khan", role: "Tech Lead", email: "aisha@company.local", color: "#6366f1", invitedAt: iso(-40) },
+    { id: "m2", userId: "seed-diego", name: "Diego Reyes", role: "Frontend Dev", email: "diego@company.local", color: "#0ea5e9", invitedAt: iso(-40) },
+    { id: "m3", userId: "seed-mei", name: "Mei Lin", role: "Backend Dev", email: "mei@company.local", color: "#10b981", invitedAt: iso(-40) },
+    { id: "m4", userId: "seed-tom", name: "Tom Okafor", role: "Full-stack Dev", email: "tom@company.local", color: "#f97316", invitedAt: null },
   ];
   const sprints = [
     {

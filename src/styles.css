@@ -1560,3 +1560,85 @@ input, select, textarea { font: inherit; color: inherit; }
   font-size: 12px; line-height: 1; padding: 0;
 }
 .file-card-remove:hover { background: var(--red); }
+/* Authentication and role-aware states */
+.app-loading {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  background: var(--bg);
+}
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(circle at top, #261447 0, var(--bg) 48%);
+}
+
+.login-card {
+  width: min(100%, 420px);
+  padding: 32px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 24px 80px #0008;
+}
+
+.login-logo { font-weight: 700; margin-bottom: 28px; }
+.login-card h1 { margin-bottom: 6px; }
+.login-card > p { color: var(--text-dim); margin: 0 0 24px; }
+.login-card > .btn { width: 100%; justify-content: center; margin-top: 8px; }
+
+.form-error,
+.sync-error,
+.read-only-notice {
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border: 1px solid #ef444466;
+  border-radius: 7px;
+  color: #fecaca;
+  background: #7f1d1d55;
+}
+
+.sync-error { margin: 0 0 14px; }
+.read-only-notice { border-color: #8b5cf666; color: var(--text); background: #8b5cf622; }
+
+.signed-in-user {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: auto;
+  padding: 14px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.signed-in-user div { min-width: 0; display: grid; }
+.signed-in-user strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.signed-in-user small { color: var(--text-dim); font-size: 10px; }
+
+.story-editor-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.story-editor-fields:disabled { opacity: .78; }
+
+.user-check-list { display: grid; gap: 7px; max-height: 290px; overflow: auto; }
+.user-check-row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.user-check-row > span:nth-child(3) { display: grid; min-width: 0; }
+.user-check-row small { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; }
+.mode-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+
+.wb-readonly .wb-canvas { pointer-events: none; }
+.wb-readonly .wb-edit,
+.wb-readonly .wb-del,
+.wb-readonly .wb-edge-toolbar,
+.wb-readonly .wb-group-btn,
+.wb-readonly .wb-bubble-popover { display: none !important; }

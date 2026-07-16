@@ -2,9 +2,12 @@ import { useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { useStore, uid } from "../store";
 import { filesToAttachments, formatBytes } from "../files";
+import { useAuth } from "../auth";
 
 export default function Files() {
   const { project, dispatch } = useStore();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -31,14 +34,14 @@ export default function Files() {
             {project.name}'s shared file folder — upload once, then attach to any task from its Attachments section.
           </div>
         </div>
-        <div className="actions">
+        {isAdmin && <div className="actions">
           <button className="btn btn-primary" onClick={() => fileInputRef.current?.click()}>
             ⬆ Upload files
           </button>
-        </div>
+        </div>}
       </div>
 
-      <div
+      {isAdmin && <div
         className={`attach-drop files-drop${dragOver ? " over" : ""}`}
         onDragOver={(e) => {
           e.preventDefault();
@@ -60,7 +63,7 @@ export default function Files() {
         />
         <span className="attach-drop-icon">📁</span>
         <span>Drop files or photos here, or click to browse</span>
-      </div>
+      </div>}
 
       {files.length === 0 ? (
         <div className="panel empty-state">
@@ -92,7 +95,7 @@ export default function Files() {
                     </span>
                   )}
                 </div>
-                <button
+                {isAdmin && <button
                   className="remove file-card-remove"
                   title="Delete from folder"
                   onClick={() => {
@@ -105,7 +108,7 @@ export default function Files() {
                   }}
                 >
                   ✕
-                </button>
+                </button>}
               </div>
             );
           })}

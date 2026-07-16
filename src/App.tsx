@@ -10,6 +10,7 @@ import Team from "./components/Team";
 import Files from "./components/Files";
 import ProjectModal from "./components/ProjectModal";
 import StoryModal from "./components/StoryModal";
+import { useAuth } from "./auth";
 
 type View = "dashboard" | "backlog" | "board" | "gantt" | "whiteboard" | "team" | "files" | "reports";
 
@@ -25,12 +26,16 @@ const NAV: { id: View; label: string; icon: string }[] = [
 ];
 
 export default function App() {
-  const { state, project, dispatch } = useStore();
+  const { state, project, dispatch, ready, error } = useStore();
+  const { user, logout } = useAuth();
   const [view, setView] = useState<View>("dashboard");
   const [projectModal, setProjectModal] = useState<"create" | "settings" | null>(null);
   const [showCreate, setShowCreate] = useState(false);
 
   const currentNav = NAV.find((n) => n.id === view)!;
+  const isAdmin = user?.role === "ADMIN";
+
+  if (!ready) return <div className="app-loading">Loading company workspace…</div>;
 
   return (
     <div className="app">
@@ -41,7 +46,7 @@ export default function App() {
 
         <div className="proj-head">
           <span>Projects</span>
-          <button title="New project" onClick={() => setProjectModal("create")}>+</button>
+          {isAdmin && <button title="New project" onClick={() => setProjectModal("create")}>+</button>}
         </div>
         <div className="proj-list">
           {state.projects.map((p) => (
@@ -57,7 +62,7 @@ export default function App() {
             >
               <span className="proj-key">{p.key}</span>
               <span className="proj-name">{p.name}</span>
-              {p.id === project.id && (
+              {isAdmin && p.id === project.id && (
                 <button
                   className="proj-gear"
                   title="Project settings"
@@ -73,31 +78,12 @@ export default function App() {
           ))}
         </div>
 
-        <div className="acting-as">
-          <label>Acting as</label>
-          <select
-            value={state.currentMemberId ?? ""}
-            onChange={(e) =>
-              dispatch({ type: "identity/setCurrentMember", id: e.target.value || null })
-            }
-          >
-            <option value="">Nobody selected</option>
-            {project.members.map((m) => (
-              <option key={m.id} value={m.id}>{m.name}</option>
-            ))}
-          </select>
+        <div className="signed-in-user">
+          <span className="avatar" style={{ background: user?.color }}>{user?.name.slice(0, 2).toUpperCase()}</span>
+          <div><strong>{user?.name}</strong><small>{isAdmin ? "Administrator" : user?.jobTitle}</small></div>
         </div>
-
         <div className="footer">
-          <button
-            onClick={() => {
-              if (confirm("Reset all data back to the sample project? This cannot be undone.")) {
-                dispatch({ type: "state/reset" });
-              }
-            }}
-          >
-            Reset demo data
-          </button>
+          <button onClick={() => void logout()}>Sign out</button>
         </div>
       </aside>
 
@@ -113,9 +99,7 @@ export default function App() {
             </span>
           </div>
           <div className="topbar-actions">
-            <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}>
-              Add Task
-            </button>
+            {isAdmin && <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}>Add Task</button>}
           </div>
         </header>
         <nav className="view-tabs">
@@ -130,6 +114,7 @@ export default function App() {
           ))}
         </nav>
         <main className="main">
+          {error && <div className="sync-error" role="alert">{error}</div>}
           {view === "dashboard" && <Dashboard onNavigate={setView} />}
           {view === "backlog" && <Backlog />}
           {view === "board" && <Board />}

@@ -34,9 +34,16 @@ services:
       PORT: 4000
       DATABASE_URL: postgresql://${POSTGRES_USER:-sprintforge}:${POSTGRES_PASSWORD:-sprintforge}@postgres:5432/${POSTGRES_DB:-sprintforge}?schema=public
       CORS_ORIGIN: http://localhost:5173,http://127.0.0.1:5173
+      JWT_SECRET: ${JWT_SECRET:-change-this-development-jwt-secret-before-deploying-123456}
+      INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-SprintForge Admin}
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-admin@sprintforge.local}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-Admin123!}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      SEED_USER_PASSWORD: ${SEED_USER_PASSWORD:-SprintForge123!}
     command: >-
       sh -c "npx prisma generate &&
-      npx prisma db push &&
+      npx prisma db push --accept-data-loss &&
+      npm run db:bootstrap &&
       npm run dev"
     ports:
       - "127.0.0.1:4000:4000"
