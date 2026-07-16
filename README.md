@@ -23,7 +23,33 @@ A Scrum/Agile product management web app built with React + TypeScript + Vite. N
 | Velocity | Snapshot taken when the sprint completes |
 | Rollover | Complete-sprint dialog moves unfinished items |
 
-## Running
+## Run everything with Docker (recommended)
+
+Docker Compose starts the React frontend, Express API, and PostgreSQL database together. You only
+need Docker Desktop (Windows/macOS) or Docker Engine with the Compose plugin (Linux).
+
+```bash
+docker compose up --build
+```
+
+Open [http://localhost:5173](http://localhost:5173). The API is available at
+[http://localhost:4000](http://localhost:4000), and its health endpoint is
+[http://localhost:4000/health](http://localhost:4000/health).
+
+Source files are mounted into the containers, so frontend and API changes reload automatically.
+PostgreSQL data is kept in a named Docker volume between restarts.
+
+Useful commands:
+
+```bash
+docker compose up -d --build   # start in the background
+docker compose logs -f         # follow all logs
+docker compose ps              # check service health
+docker compose down            # stop the stack and keep database data
+docker compose down -v         # stop and permanently delete database data
+```
+
+## Run directly with npm
 
 ```bash
 npm install

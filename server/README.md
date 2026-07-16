@@ -21,24 +21,30 @@ If the server is unreachable, every API call fails silently and the app carries 
 
 ## Local development
 
-You need a Postgres instance. Easiest path — Docker:
+The recommended workflow is to start the complete stack from the repository root:
 
 ```bash
-# from the repo root
-docker compose up -d          # starts Postgres on localhost:5432
+docker compose up --build
+```
+
+Compose waits for PostgreSQL, generates the Prisma client, applies the current schema with
+`prisma db push`, and then starts the API with hot reload. No manual `.env` files or database setup
+are needed for this workflow.
+
+To run only the API directly with npm, first start or provide a Postgres instance:
+
+```bash
 cd server
 cp .env.example .env
 npm install
-npm run prisma:migrate        # creates tables, prompts for a migration name the first time
+npx prisma db push
 npm run dev                   # starts the API on http://localhost:4000
 ```
 
 Then, in the repo root, copy `.env.example` to `.env` and set `VITE_API_URL=http://localhost:4000`,
 restart `npm run dev` for the frontend, and it'll start syncing.
 
-No Docker? Point `DATABASE_URL` in `server/.env` at any Postgres you have access to (a free
-instance on [Neon](https://neon.tech) or [Supabase](https://supabase.com) both work fine) and skip
-the `docker compose` step.
+Point `DATABASE_URL` in `server/.env` at any PostgreSQL server available from your machine.
 
 ## Deploying remotely
 
@@ -52,8 +58,9 @@ accounts:
    - `DATABASE_URL` — the connection string from step 1.
    - `CORS_ORIGIN` — your deployed frontend's URL (comma-separated if there's more than one).
    - `PORT` — most platforms set this for you.
-   The `Dockerfile`'s `CMD` runs `prisma migrate deploy` before starting, so schema migrations apply
-   automatically on each deploy.
+   This repository does not currently contain versioned Prisma migrations. Run `npx prisma db push`
+   as a deployment/release step before starting the production image, or add and commit migrations
+   before switching that release step to `prisma migrate deploy`.
 3. **The frontend**: set `VITE_API_URL` to the deployed API's URL at build time, then deploy `dist/`
    (from `npm run build` in the repo root) to any static host (Vercel, Netlify, Cloudflare Pages,
    the same server via a static file middleware, etc.).

@@ -1,17 +1,42 @@
-FROM node:20-slim AS build
+FROM node:20-bookworm-slim AS base
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+FROM base AS development
+
 COPY . .
 RUN npx prisma generate
-RUN npm run build
 
-FROM node:20-slim
+EXPOSE 4000
+
+CMD ["npm", "run", "dev"]
+
+FROM base AS build
+
+COPY . .
+RUN npx prisma generate && npm run build
+
+FROM node:20-bookworm-slim AS production
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 ENV NODE_ENV=production
+
+COPY --from=build /app/package.json /app/package-lock.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
-COPY package.json ./
+
 EXPOSE 4000
-CMD npx prisma migrate deploy && node dist/index.js
+
+CMD ["node", "dist/index.js"]

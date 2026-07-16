@@ -1,19 +1,103 @@
+name: sprintforge
+
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: sprintforge
-      POSTGRES_PASSWORD: sprintforge
-      POSTGRES_DB: sprintforge
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-sprintforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sprintforge}
+      POSTGRES_DB: ${POSTGRES_DB:-sprintforge}
     volumes:
-      - sprintforge_pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sprintforge"]
-      interval: 3s
-      timeout: 3s
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}",
+        ]
+      interval: 5s
+      timeout: 5s
       retries: 10
+      start_period: 5s
+    networks:
+      - sprintforge
+
+  api:
+    build:
+      context: ./server
+      target: development
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sprintforge}:${POSTGRES_PASSWORD:-sprintforge}@postgres:5432/${POSTGRES_DB:-sprintforge}?schema=public
+      CORS_ORIGIN: http://localhost:5173,http://127.0.0.1:5173
+    command: >-
+      sh -c "npx prisma generate &&
+      npx prisma db push &&
+      npm run dev"
+    ports:
+      - "127.0.0.1:4000:4000"
+    volumes:
+      - ./server:/app
+      - api_node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 15s
+    networks:
+      - sprintforge
+
+  frontend:
+    build:
+      context: .
+      target: development
+    restart: unless-stopped
+    init: true
+    environment:
+      VITE_API_URL: http://localhost:4000
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+    ports:
+      - "127.0.0.1:5173:5173"
+    volumes:
+      - .:/app
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:5173').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - sprintforge
 
 volumes:
-  sprintforge_pgdata:
+  postgres_data:
+  api_node_modules:
+  frontend_node_modules:
+
+networks:
+  sprintforge:
+    driver: bridge
