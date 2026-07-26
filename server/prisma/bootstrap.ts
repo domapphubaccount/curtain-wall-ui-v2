@@ -38,9 +38,13 @@ function ymd(offsetDays: number): string {
 }
 
 async function bootstrap() {
+  const initialAdminPassword = required("INITIAL_ADMIN_PASSWORD");
+  if (initialAdminPassword.length < 12) {
+    throw new Error("INITIAL_ADMIN_PASSWORD must contain at least 12 characters");
+  }
   const admin = await ensureUser({
     email: required("INITIAL_ADMIN_EMAIL"),
-    password: required("INITIAL_ADMIN_PASSWORD"),
+    password: initialAdminPassword,
     name: process.env.INITIAL_ADMIN_NAME?.trim() || "SprintForge Admin",
     jobTitle: "Administrator",
     color: "#8b5cf6",

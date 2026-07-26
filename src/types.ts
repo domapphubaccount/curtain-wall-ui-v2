@@ -161,6 +161,8 @@ export interface Project {
   id: ID;
   name: string;
   key: string;
+  /** Server-side optimistic-lock version used to prevent stale snapshots overwriting newer work. */
+  revision: number;
   stories: Story[];
   epics: Epic[];
   sprints: Sprint[];

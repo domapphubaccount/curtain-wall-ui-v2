@@ -103,6 +103,7 @@ export function serializeProject(p: FullProject) {
     name: p.name,
     key: p.key,
     seq: p.seq,
+    revision: p.revision,
     whiteboards: p.whiteboards,
     activeWhiteboardId: p.activeWhiteboardId,
     files: p.files,

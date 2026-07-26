@@ -1,7 +1,7 @@
 import type { Attachment } from "./types";
 
-/** Keeps localStorage usage sane since attachments are stored as base64. */
-export const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024; // 8MB per file
+/** Basic deployment stores base64 in PostgreSQL JSON, so keep individual files small. */
+export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // 5MB per file
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -26,7 +26,7 @@ export async function filesToAttachments(
   const out: Attachment[] = [];
   for (const file of Array.from(files)) {
     if (file.size > MAX_ATTACHMENT_BYTES) {
-      alert(`"${file.name}" is over the 8MB limit and was skipped.`);
+      alert(`"${file.name}" is over the 5MB limit and was skipped.`);
       continue;
     }
     const dataUrl = await readAsDataUrl(file);

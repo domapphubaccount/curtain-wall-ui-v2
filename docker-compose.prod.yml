@@ -1,0 +1,87 @@
+name: sprintforge-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sprintforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-sprintforge}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - backend
+
+  api:
+    build:
+      context: ./server
+      target: production
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sprintforge}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sprintforge}?schema=public
+      CORS_ORIGIN: ${PUBLIC_ORIGIN:?PUBLIC_ORIGIN must be set}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      TRUST_PROXY: "1"
+      JSON_BODY_LIMIT: 25mb
+      INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-SprintForge Admin}
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:?INITIAL_ADMIN_EMAIL must be set}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:?INITIAL_ADMIN_PASSWORD must be set}
+      SEED_DEMO_DATA: "false"
+    command: >-
+      sh -c "npx prisma migrate deploy &&
+      npm run db:bootstrap &&
+      node dist/index.js"
+    expose:
+      - "4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - frontend
+      - backend
+
+  frontend:
+    build:
+      context: .
+      target: production
+      args:
+        VITE_API_URL: ""
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${HTTP_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - frontend
+
+volumes:
+  postgres_data:
+
+networks:
+  frontend:
+  backend:
+    internal: true

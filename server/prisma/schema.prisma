@@ -32,6 +32,7 @@ model Project {
   name               String
   key                String   @unique
   seq                Int      @default(1)
+  revision           Int      @default(1)
   whiteboards        Json     @default("[]")
   activeWhiteboardId String?
   files              Json     @default("[]")

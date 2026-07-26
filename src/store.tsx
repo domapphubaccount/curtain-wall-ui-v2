@@ -249,6 +249,7 @@ function reducer(state: AppState, action: Action): AppState {
         id: uid(),
         name: action.name,
         key: action.key,
+        revision: 1,
         stories: [],
         epics: [],
         sprints: [],
@@ -432,6 +433,7 @@ function withProjectDefaults(p: Project): Project {
     : whiteboards[0].id;
   return {
     ...p,
+    revision: p.revision ?? 1,
     whiteboards,
     activeWhiteboardId,
     files: p.files ?? [],
@@ -473,6 +475,7 @@ function loadInitialState(): AppState {
         id: uid(),
         name: legacy.projectName,
         key: legacy.projectKey,
+        revision: 1,
         stories: legacy.stories,
         epics: legacy.epics,
         sprints: legacy.sprints,
@@ -509,6 +512,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteProjectIdsRef = useRef(new Set<ID>());
+  const remoteRevisionsRef = useRef(new Map<ID, number>());
+  const syncQueuesRef = useRef(new Map<ID, Promise<void>>());
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -520,6 +525,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       .then((projects) => {
         if (!active) return;
         remoteProjectIdsRef.current = new Set(projects.map((project) => project.id));
+        remoteRevisionsRef.current = new Map(projects.map((project) => [project.id, project.revision]));
         dispatch({ type: "projects/hydrateAll", projects });
         setError(null);
       })
@@ -560,16 +566,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!project || !remoteProjectIdsRef.current.has(project.id)) return;
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
-      apiSyncProject(project)
-        .then(() => setError(null))
+      const previous = syncQueuesRef.current.get(project.id) ?? Promise.resolve();
+      const next = previous
+        .catch(() => undefined)
+        .then(async () => {
+          const revision = remoteRevisionsRef.current.get(project.id) ?? project.revision;
+          const updated = await apiSyncProject(project, revision);
+          remoteRevisionsRef.current.set(project.id, updated.revision);
+          setError(null);
+        })
         .catch(async (requestError: Error) => {
           setError(requestError.message);
           try {
-            dispatch({ type: "project/hydrate", project: await apiGetProject(project.id) });
+            const authoritative = await apiGetProject(project.id);
+            remoteRevisionsRef.current.set(project.id, authoritative.revision);
+            dispatch({ type: "project/hydrate", project: authoritative });
           } catch {
             // Keep the visible error from the original failed mutation.
           }
         });
+      syncQueuesRef.current.set(project.id, next);
+      void next.finally(() => {
+        if (syncQueuesRef.current.get(project.id) === next) syncQueuesRef.current.delete(project.id);
+      });
     }, 600);
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
@@ -583,6 +602,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     remoteProjectIdsRef.current.add(project.id);
     apiCreateProject(project)
       .then((created) => {
+        remoteRevisionsRef.current.set(created.id, created.revision);
         dispatch({ type: "project/hydrate", project: created });
         setError(null);
       })

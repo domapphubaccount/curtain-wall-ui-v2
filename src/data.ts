@@ -218,6 +218,7 @@ export function createSeedProject(): Project {
     id: "p1",
     name: "NovaCart",
     key: "NOVA",
+    revision: 1,
     stories,
     epics,
     sprints,

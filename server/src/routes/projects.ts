@@ -12,6 +12,7 @@ type ProjectBody = {
   name: string;
   key: string;
   seq: number;
+  revision: number;
   epics: { id: string; name: string; color: string }[];
   members: { id: string; userId: string; name: string; role: string; email: string; color: string; invitedAt: string | null }[];
   sprints: {
@@ -36,7 +37,9 @@ function isProjectBody(value: unknown): value is ProjectBody {
   if (!value || typeof value !== "object") return false;
   const body = value as Partial<ProjectBody>;
   return typeof body.id === "string" && typeof body.name === "string" && typeof body.key === "string" &&
-    typeof body.seq === "number" && typeof body.activeWhiteboardId === "string" &&
+    typeof body.seq === "number" && typeof body.revision === "number" &&
+    Number.isInteger(body.revision) && body.revision > 0 &&
+    typeof body.activeWhiteboardId === "string" &&
     Array.isArray(body.epics) && Array.isArray(body.members) && Array.isArray(body.sprints) &&
     Array.isArray(body.stories) && Array.isArray(body.whiteboards) && Array.isArray(body.files);
 }
@@ -47,6 +50,21 @@ function isAdmin(req: AuthenticatedRequest): boolean {
 
 function same(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
+}
+
+class RevisionConflictError extends Error {}
+
+async function claimRevision(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  expectedRevision: number,
+  data: Prisma.ProjectUpdateManyMutationInput = {},
+): Promise<void> {
+  const result = await tx.project.updateMany({
+    where: { id: projectId, revision: expectedRevision },
+    data: { ...data, revision: { increment: 1 } },
+  });
+  if (result.count !== 1) throw new RevisionConflictError();
 }
 
 function storyData(story: StoryBody): Prisma.StoryUncheckedUpdateInput {
@@ -175,7 +193,19 @@ projectsRouter.put("/:id", async (req: AuthenticatedRequest, res) => {
       changedStories.push(requested);
     }
 
-    await prisma.$transaction(changedStories.map((story) => prisma.story.update({ where: { id: story.id }, data: storyData(story) })));
+    try {
+      await prisma.$transaction(async (tx) => {
+        await claimRevision(tx, id, body.revision);
+        for (const story of changedStories) {
+          await tx.story.update({ where: { id: story.id }, data: storyData(story) });
+        }
+      });
+    } catch (error) {
+      if (error instanceof RevisionConflictError) {
+        return res.status(409).json({ error: "This project changed in another session. It has been reloaded; please retry." });
+      }
+      throw error;
+    }
     const updated = await prisma.project.findUniqueOrThrow({ where: { id }, include: PROJECT_INCLUDE });
     return res.json(serializeProject(updated));
   }
@@ -187,63 +217,67 @@ projectsRouter.put("/:id", async (req: AuthenticatedRequest, res) => {
   if (await hasForeignOwnedIds(id, body)) return res.status(409).json({ error: "One or more resource IDs belong to another project" });
   const usersById = new Map(users.map((user) => [user.id, user]));
 
-  await prisma.$transaction(async (tx) => {
-    await tx.project.update({
-      where: { id },
-      data: {
+  try {
+    await prisma.$transaction(async (tx) => {
+      await claimRevision(tx, id, body.revision, {
         name: body.name.trim(), key: body.key.trim().toUpperCase(), seq: body.seq,
         whiteboards: body.whiteboards, activeWhiteboardId: body.activeWhiteboardId, files: body.files,
-      },
+      });
+
+      const epicIds = body.epics.map((epic) => epic.id);
+      await tx.epic.deleteMany({ where: { projectId: id, id: { notIn: epicIds } } });
+      for (const epic of body.epics) {
+        await tx.epic.upsert({
+          where: { id: epic.id },
+          create: { ...epic, projectId: id },
+          update: { name: epic.name, color: epic.color },
+        });
+      }
+
+      const memberIds = body.members.map((member) => member.id);
+      await tx.member.deleteMany({ where: { projectId: id, id: { notIn: memberIds } } });
+      for (const member of body.members) {
+        const user = usersById.get(member.userId)!;
+        await tx.member.upsert({
+          where: { id: member.id },
+          create: { id: member.id, projectId: id, userId: user.id, name: user.name, role: user.jobTitle, email: user.email, color: user.color, invitedAt: new Date() },
+          update: { userId: user.id, name: user.name, role: user.jobTitle, email: user.email, color: user.color },
+        });
+      }
+
+      const sprintIds = body.sprints.map((sprint) => sprint.id);
+      await tx.sprint.deleteMany({ where: { projectId: id, id: { notIn: sprintIds } } });
+      for (const sprint of body.sprints) {
+        const data = {
+          name: sprint.name, goal: sprint.goal, startDate: sprint.startDate, endDate: sprint.endDate,
+          state: sprint.state, velocity: sprint.velocity, committedPoints: sprint.committedPoints,
+        };
+        await tx.sprint.upsert({ where: { id: sprint.id }, create: { id: sprint.id, projectId: id, ...data }, update: data });
+      }
+
+      const storyIds = body.stories.map((story) => story.id);
+      await tx.story.deleteMany({ where: { projectId: id, id: { notIn: storyIds } } });
+      for (const story of body.stories) {
+        const data = storyData(story);
+        await tx.story.upsert({
+          where: { id: story.id },
+          create: {
+            ...(data as Prisma.StoryUncheckedCreateInput),
+            id: story.id,
+            projectId: id,
+            key: story.key,
+            createdAt: new Date(story.createdAt),
+          },
+          update: data,
+        });
+      }
     });
-
-    const epicIds = body.epics.map((epic) => epic.id);
-    await tx.epic.deleteMany({ where: { projectId: id, id: { notIn: epicIds } } });
-    for (const epic of body.epics) {
-      await tx.epic.upsert({
-        where: { id: epic.id },
-        create: { ...epic, projectId: id },
-        update: { name: epic.name, color: epic.color },
-      });
+  } catch (error) {
+    if (error instanceof RevisionConflictError) {
+      return res.status(409).json({ error: "This project changed in another session. It has been reloaded; please retry." });
     }
-
-    const memberIds = body.members.map((member) => member.id);
-    await tx.member.deleteMany({ where: { projectId: id, id: { notIn: memberIds } } });
-    for (const member of body.members) {
-      const user = usersById.get(member.userId)!;
-      await tx.member.upsert({
-        where: { id: member.id },
-        create: { id: member.id, projectId: id, userId: user.id, name: user.name, role: user.jobTitle, email: user.email, color: user.color, invitedAt: new Date() },
-        update: { userId: user.id, name: user.name, role: user.jobTitle, email: user.email, color: user.color },
-      });
-    }
-
-    const sprintIds = body.sprints.map((sprint) => sprint.id);
-    await tx.sprint.deleteMany({ where: { projectId: id, id: { notIn: sprintIds } } });
-    for (const sprint of body.sprints) {
-      const data = {
-        name: sprint.name, goal: sprint.goal, startDate: sprint.startDate, endDate: sprint.endDate,
-        state: sprint.state, velocity: sprint.velocity, committedPoints: sprint.committedPoints,
-      };
-      await tx.sprint.upsert({ where: { id: sprint.id }, create: { id: sprint.id, projectId: id, ...data }, update: data });
-    }
-
-    const storyIds = body.stories.map((story) => story.id);
-    await tx.story.deleteMany({ where: { projectId: id, id: { notIn: storyIds } } });
-    for (const story of body.stories) {
-      const data = storyData(story);
-      await tx.story.upsert({
-        where: { id: story.id },
-        create: {
-          ...(data as Prisma.StoryUncheckedCreateInput),
-          id: story.id,
-          projectId: id,
-          key: story.key,
-          createdAt: new Date(story.createdAt),
-        },
-        update: data,
-      });
-    }
-  });
+    throw error;
+  }
 
   const project = await prisma.project.findUniqueOrThrow({ where: { id }, include: PROJECT_INCLUDE });
   res.json(serializeProject(project));

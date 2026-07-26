@@ -59,8 +59,11 @@ export function apiCreateProject(project: Project): Promise<Project> {
   return request<Project>("/api/projects", { method: "POST", body: JSON.stringify(project) });
 }
 
-export function apiSyncProject(project: Project): Promise<Project> {
-  return request<Project>(`/api/projects/${project.id}`, { method: "PUT", body: JSON.stringify(project) });
+export function apiSyncProject(project: Project, expectedRevision = project.revision): Promise<Project> {
+  return request<Project>(`/api/projects/${project.id}`, {
+    method: "PUT",
+    body: JSON.stringify({ ...project, revision: expectedRevision }),
+  });
 }
 
 export function apiDeleteProject(id: string): Promise<void> {
