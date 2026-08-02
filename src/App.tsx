@@ -10,6 +10,7 @@ import Team from "./components/Team";
 import Files from "./components/Files";
 import ProjectModal from "./components/ProjectModal";
 import StoryModal from "./components/StoryModal";
+import AccountModal from "./components/AccountModal";
 import { useAuth } from "./auth";
 
 type View = "dashboard" | "backlog" | "board" | "gantt" | "whiteboard" | "team" | "files" | "reports";
@@ -31,6 +32,7 @@ export default function App() {
   const [view, setView] = useState<View>("dashboard");
   const [projectModal, setProjectModal] = useState<"create" | "settings" | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
 
   const currentNav = NAV.find((n) => n.id === view)!;
   const isAdmin = user?.role === "ADMIN";
@@ -78,10 +80,11 @@ export default function App() {
           ))}
         </div>
 
-        <div className="signed-in-user">
+        <button className="signed-in-user" onClick={() => setShowAccount(true)} title="Edit your account">
           <span className="avatar" style={{ background: user?.color }}>{user?.name.slice(0, 2).toUpperCase()}</span>
           <div><strong>{user?.name}</strong><small>{isAdmin ? "Administrator" : user?.jobTitle}</small></div>
-        </div>
+          <span className="account-edit-icon">⚙</span>
+        </button>
         <div className="footer">
           <button onClick={() => void logout()}>Sign out</button>
         </div>
@@ -150,6 +153,10 @@ export default function App() {
         <ProjectModal mode={projectModal} onClose={() => setProjectModal(null)} />
       )}
       {showCreate && project && <StoryModal story={null} onClose={() => setShowCreate(false)} />}
+      {showAccount && <AccountModal onSaved={(updated) => {
+        dispatch({ type: "user/profileUpdated", user: updated });
+        setShowAccount(false);
+      }} onClose={() => setShowAccount(false)} />}
     </div>
   );
 }

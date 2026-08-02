@@ -64,7 +64,14 @@ usersRouter.patch("/:id", async (req: AuthenticatedRequest, res) => {
   }
 
   try {
-    const user = await prisma.user.update({ where: { id: existing.id }, data });
+    const user = await prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({ where: { id: existing.id }, data });
+      await tx.member.updateMany({
+        where: { userId: updated.id },
+        data: { name: updated.name, email: updated.email, role: updated.jobTitle, color: updated.color },
+      });
+      return updated;
+    });
     res.json({ ...serializeAuthUser(user), active: user.active });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

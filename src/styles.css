@@ -1612,11 +1612,22 @@ input, select, textarea { font: inherit; color: inherit; }
   margin-top: auto;
   padding: 14px 10px;
   border-top: 1px solid var(--border);
+  width: 100%;
+  background: none;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
 }
+.signed-in-user:hover { background: rgba(139, 92, 246, 0.1); }
 
 .signed-in-user div { min-width: 0; display: grid; }
 .signed-in-user strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .signed-in-user small { color: var(--text-dim); font-size: 10px; }
+.signed-in-user .account-edit-icon { margin-left: auto; color: var(--text-faint); font-size: 12px; }
+.form-section-label { margin: 6px 0 2px; color: var(--text-dim); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 
 .story-editor-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
 .story-editor-fields:disabled { opacity: .78; }

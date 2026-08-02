@@ -52,6 +52,7 @@ export type Action =
   | { type: "state/reset" }
   | { type: "project/hydrate"; project: Project }
   | { type: "projects/hydrateAll"; projects: Project[] }
+  | { type: "projects/refreshAccess"; projects: Project[] }
   | { type: "user/profileUpdated"; user: AuthUser };
 
 export function uid(): string {
@@ -416,6 +417,18 @@ function reducer(state: AppState, action: Action): AppState {
           : projects[0]?.id ?? "",
       };
     }
+    case "projects/refreshAccess": {
+      const accessibleIds = new Set(action.projects.map((project) => project.id));
+      const existingById = new Map(state.projects.map((project) => [project.id, project]));
+      const projects = action.projects.map((project) => existingById.get(project.id) ?? withProjectDefaults(project));
+      return {
+        ...state,
+        projects,
+        currentProjectId: accessibleIds.has(state.currentProjectId)
+          ? state.currentProjectId
+          : projects[0]?.id ?? "",
+      };
+    }
     case "user/profileUpdated":
       return {
         ...state,
@@ -557,6 +570,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (!ready || user?.role === "ADMIN") return;
+    let active = true;
+    const refreshAccess = () => {
+      apiListProjects().then((projects) => {
+        if (!active) return;
+        const knownIds = remoteProjectIdsRef.current;
+        for (const project of projects) {
+          if (!knownIds.has(project.id)) remoteRevisionsRef.current.set(project.id, project.revision);
+        }
+        remoteProjectIdsRef.current = new Set(projects.map((project) => project.id));
+        dispatch({ type: "projects/refreshAccess", projects });
+      }).catch(() => undefined);
+    };
+    const interval = window.setInterval(refreshAccess, 10_000);
+    window.addEventListener("focus", refreshAccess);
+    document.addEventListener("visibilitychange", refreshAccess);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshAccess);
+      document.removeEventListener("visibilitychange", refreshAccess);
+    };
+  }, [ready, user?.role]);
 
   const apiDispatch = useCallback((action: Action) => {
     const currentProject = state.projects.find((project) => project.id === state.currentProjectId);
