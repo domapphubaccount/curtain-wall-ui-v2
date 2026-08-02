@@ -8,15 +8,13 @@ installation for TLS.
 ```text
 Internet :443
   -> host Nginx (TLS)
-  -> 127.0.0.1:8080
-  -> frontend container Nginx :80
-       /assets and SPA routes -> React static files
-       /api/*                -> api container :4000
+       / and SPA routes -> 127.0.0.1:8080 (frontend)
+       /api/*           -> 127.0.0.1:4000 (API)
   -> PostgreSQL :5432 on an internal Docker network only
 ```
 
-Only ports 80/443 of the host Nginx should be public. Port 8080 binds to localhost. Backend port
-4000 and PostgreSQL port 5432 are internal and must not be exposed by the firewall.
+Only ports 80/443 of the host Nginx should be public. Frontend port 8080 and API port 4000 bind to
+localhost. PostgreSQL remains on an internal Docker network.
 
 ## First deployment
 
@@ -38,10 +36,6 @@ docker compose --env-file .env.production -f docker-compose.prod.yml logs -f api
 
 The API applies committed Prisma migrations and creates the initial administrator idempotently.
 Demo data is disabled.
-
-Install `deploy/host-nginx-tls.example.conf` on the host, replace the domain and certificate paths,
-enable the site, validate with `nginx -t`, and reload Nginx. Certbot can provision the referenced
-Let's Encrypt certificate.
 
 For an HTTP-only private smoke test, set `COOKIE_SECURE=false`, keep `HTTP_PORT=8080`, and browse to
 `http://127.0.0.1:8080` from the host. Never use this HTTP mode over the public internet.

@@ -42,8 +42,8 @@ services:
       sh -c "npx prisma migrate deploy &&
       npm run db:bootstrap &&
       node dist/index.js"
-    expose:
-      - "4000"
+    ports:
+      - "127.0.0.1:${API_PORT:-4000}:4000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,7 +60,6 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - frontend
       - backend
 
   frontend:
@@ -70,18 +69,15 @@ services:
       args:
         VITE_API_URL: ""
     restart: unless-stopped
+    init: true
+    environment:
+      PORT: 8080
     ports:
-      - "127.0.0.1:${HTTP_PORT:-8080}:80"
-    depends_on:
-      api:
-        condition: service_healthy
-    networks:
-      - frontend
+      - "127.0.0.1:${HTTP_PORT:-8080}:8080"
 
 volumes:
   postgres_data:
 
 networks:
-  frontend:
   backend:
     internal: true

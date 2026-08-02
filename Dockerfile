@@ -21,12 +21,19 @@ ENV VITE_API_URL=${VITE_API_URL}
 COPY . .
 RUN npm run build
 
-FROM nginx:1.27-alpine AS production
+FROM node:20-bookworm-slim AS production
 
-COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+WORKDIR /app
 
-EXPOSE 80
+ENV NODE_ENV=production
+ENV PORT=8080
+
+COPY --from=build /app/dist ./dist
+COPY production-server.mjs ./production-server.mjs
+
+EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -qO- http://127.0.0.1/healthz >/dev/null || exit 1
+  CMD node -e "fetch('http://127.0.0.1:8080/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+
+CMD ["node", "production-server.mjs"]
