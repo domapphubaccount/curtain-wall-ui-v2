@@ -71,13 +71,17 @@ services:
     restart: unless-stopped
     init: true
     environment:
-      PORT: 5173
+      PORT: 8090
     ports:
-      - "127.0.0.1:${HTTP_PORT:-5173}:5173"
+      - "127.0.0.1:${HTTP_PORT:-8090}:8090"
+    networks:
+      - frontend
 
 volumes:
   postgres_data:
 
 networks:
+  frontend:
+    driver: bridge
   backend:
     internal: true
