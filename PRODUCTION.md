@@ -10,11 +10,11 @@ Internet :443
   -> host Nginx (TLS)
        / and SPA routes -> 127.0.0.1:8090 (frontend)
        /api/*           -> 127.0.0.1:4000 (API)
-  -> PostgreSQL :5432 on an internal Docker network only
+  -> PostgreSQL :5432 on the shared Docker network (not published to the host)
 ```
 
 Only ports 80/443 of the host Nginx should be public. Frontend port 8090 and API port 4000 bind to
-localhost. PostgreSQL remains on an internal Docker network.
+localhost. PostgreSQL is available only to containers on the shared network.
 
 ## First deployment
 
