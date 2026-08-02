@@ -55,6 +55,12 @@ export function serializeStory(s: Story) {
   };
 }
 
+function issueKeyForProject(projectKey: string, issueKey: string): string {
+  if (issueKey.startsWith(`${projectKey}-`)) return issueKey;
+  const issueNumber = issueKey.match(/(\d+)$/)?.[1];
+  return issueNumber ? `${projectKey}-${issueNumber}` : issueKey;
+}
+
 export function serializeWBNode(n: WBNode) {
   return {
     id: n.id,
@@ -110,7 +116,10 @@ export function serializeProject(p: FullProject) {
     epics: p.epics.map(serializeEpic),
     members: p.members.map(serializeMember),
     sprints: p.sprints.map(serializeSprint),
-    stories: p.stories.map(serializeStory),
+    stories: p.stories.map((story) => ({
+      ...serializeStory(story),
+      key: issueKeyForProject(p.key, story.key),
+    })),
     whiteboard: {
       nodes: p.wbNodes.map(serializeWBNode),
       edges: p.wbEdges.map(serializeWBEdge),

@@ -180,7 +180,7 @@ function roundedPathD(points: { x: number; y: number }[], radius: number): strin
 export default function Whiteboard() {
   const { project, dispatch } = useStore();
   const { user } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
+  const canEdit = user?.role === "ADMIN" || project.members.some((member) => member.userId === user?.id);
   const wb = project.whiteboards.find((b) => b.id === project.activeWhiteboardId) ?? project.whiteboards[0];
   const [renamingBoardId, setRenamingBoardId] = useState<ID | null>(null);
   const [newBoardMenuOpen, setNewBoardMenuOpen] = useState(false);
@@ -814,12 +814,12 @@ export default function Whiteboard() {
                 className="wb-board-tab-btn"
                 title="Double-click to rename"
                 onClick={() => dispatch({ type: "wb/setActiveBoard", id: b.id })}
-                onDoubleClick={() => { if (isAdmin) setRenamingBoardId(b.id); }}
+                onDoubleClick={() => { if (canEdit) setRenamingBoardId(b.id); }}
               >
                 <span className="wb-board-tab-icon">{b.kind === "html" ? "</>" : "▦"}</span> {b.name}
               </button>
             )}
-            {isAdmin && project.whiteboards.length > 1 && (
+            {canEdit && project.whiteboards.length > 1 && (
               <button
                 className="wb-board-tab-close"
                 title="Delete this whiteboard"
@@ -834,7 +834,7 @@ export default function Whiteboard() {
             )}
           </div>
         ))}
-        {isAdmin && <div className="wb-board-tab-add-wrap">
+        {canEdit && <div className="wb-board-tab-add-wrap">
           <button
             className="wb-board-tab-add"
             title="New whiteboard"
@@ -869,17 +869,17 @@ export default function Whiteboard() {
         <HtmlBoardView
           key={wb.id}
           board={wb}
-          readOnly={!isAdmin}
+          readOnly={!canEdit}
           onSave={(html) => dispatch({ type: "wb/updateBoardHtml", id: wb.id, html })}
         />
       ) : (
       <>
       <div
         ref={containerRef}
-        className={`wb-viewport${dropHover ? " wb-drop-hover" : ""}${isAdmin ? "" : " wb-readonly"}`}
+        className={`wb-viewport${dropHover ? " wb-drop-hover" : ""}${canEdit ? "" : " wb-readonly"}`}
         style={{ backgroundSize: `${gridSize}px ${gridSize}px`, backgroundPosition: bgPos }}
         onMouseDown={onCanvasMouseDown}
-        onDoubleClick={isAdmin ? onCanvasDoubleClick : undefined}
+        onDoubleClick={canEdit ? onCanvasDoubleClick : undefined}
         onWheel={onWheel}
         onDragOver={(e) => {
           if (!e.dataTransfer.types.includes("Files")) return;
@@ -889,7 +889,7 @@ export default function Whiteboard() {
         onDragLeave={(e) => {
           if (e.target === e.currentTarget) setDropHover(false);
         }}
-        onDrop={isAdmin ? handleCanvasFileDrop : undefined}
+        onDrop={canEdit ? handleCanvasFileDrop : undefined}
       >
         <div
           className="wb-canvas"
@@ -1424,7 +1424,7 @@ export default function Whiteboard() {
           <button onClick={() => zoomBy(1.2)}>+</button>
         </div>
 
-        {isAdmin && <div className="wb-toolbar" onMouseDown={(e) => e.stopPropagation()}>
+        {canEdit && <div className="wb-toolbar" onMouseDown={(e) => e.stopPropagation()}>
           <button
             className={`wb-tool-btn${tool === "select" ? " active" : ""}`}
             title="Select"

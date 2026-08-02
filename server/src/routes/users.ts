@@ -43,6 +43,11 @@ usersRouter.patch("/:id", async (req: AuthenticatedRequest, res) => {
 
   const data: Prisma.UserUpdateInput = {};
   if (typeof req.body?.name === "string" && req.body.name.trim()) data.name = req.body.name.trim();
+  if (typeof req.body?.email === "string") {
+    const email = req.body.email.trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: "Email is required" });
+    data.email = email;
+  }
   if (typeof req.body?.jobTitle === "string") data.jobTitle = req.body.jobTitle.trim() || "Team member";
   if (typeof req.body?.color === "string") data.color = req.body.color;
   if (req.body?.role === UserRole.ADMIN || req.body?.role === UserRole.USER) data.role = req.body.role;
@@ -58,6 +63,13 @@ usersRouter.patch("/:id", async (req: AuthenticatedRequest, res) => {
     if (activeAdmins <= 1) return res.status(409).json({ error: "The system must keep at least one active administrator" });
   }
 
-  const user = await prisma.user.update({ where: { id: existing.id }, data });
-  res.json({ ...serializeAuthUser(user), active: user.active });
+  try {
+    const user = await prisma.user.update({ where: { id: existing.id }, data });
+    res.json({ ...serializeAuthUser(user), active: user.active });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return res.status(409).json({ error: "A user with this email already exists" });
+    }
+    throw error;
+  }
 });

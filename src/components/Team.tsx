@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiCreateUser, apiListUsers } from "../api";
+import { apiCreateUser, apiListUsers, apiUpdateUser } from "../api";
 import { useAuth } from "../auth";
 import { MEMBER_COLORS } from "../data";
 import { uid, useStore } from "../store";
@@ -15,6 +15,7 @@ export default function Team() {
   const { user } = useAuth();
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingUser, setEditingUser] = useState<SystemUser | null>(null);
   const [error, setError] = useState("");
   const isAdmin = user?.role === "ADMIN";
 
@@ -39,8 +40,14 @@ export default function Team() {
             <div className="team-member-cell"><span className="avatar" style={{ background: member.color }}>{initials(member.name)}</span><strong>{member.name}</strong></div>
             <span>{member.role}</span>
             <span>{member.email}</span>
-            <span className="status-pill status-done">Active</span>
+            <span className={`status-pill ${users.find((account) => account.id === member.userId)?.active === false ? "" : "status-done"}`}>
+              {users.find((account) => account.id === member.userId)?.active === false ? "Inactive" : "Active"}
+            </span>
             <div className="team-row-actions">
+              {isAdmin && (() => {
+                const account = users.find((candidate) => candidate.id === member.userId);
+                return account ? <button className="btn btn-sm" onClick={() => setEditingUser(account)}>Edit</button> : null;
+              })()}
               {isAdmin && member.userId !== user?.id && (
                 <button className="btn btn-sm btn-ghost" onClick={() => {
                   if (confirm(`Remove ${member.name} from this project? Their tasks will become unassigned.`)) {
@@ -71,7 +78,72 @@ export default function Team() {
           onClose={() => setShowAdd(false)}
         />
       )}
+      {editingUser && (
+        <EditUserModal
+          account={editingUser}
+          onSaved={(updated) => {
+            const membership = project.members.find((member) => member.userId === updated.id);
+            if (membership) {
+              dispatch({
+                type: "member/update",
+                id: membership.id,
+                patch: { name: updated.name, email: updated.email, role: updated.jobTitle, color: updated.color },
+              });
+            }
+            setUsers((current) => current.map((account) => account.id === updated.id ? updated : account));
+            setEditingUser(null);
+          }}
+          onClose={() => setEditingUser(null)}
+        />
+      )}
     </>
+  );
+}
+
+function EditUserModal({ account, onSaved, onClose }: {
+  account: SystemUser;
+  onSaved(user: SystemUser): void;
+  onClose(): void;
+}) {
+  const [name, setName] = useState(account.name);
+  const [email, setEmail] = useState(account.email);
+  const [jobTitle, setJobTitle] = useState(account.jobTitle);
+  const [color, setColor] = useState(account.color);
+  const [role, setRole] = useState<SystemRole>(account.role);
+  const [active, setActive] = useState(account.active);
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    if (!name.trim() || !email.trim() || (password && password.length < 8)) return;
+    setSaving(true);
+    setError("");
+    try {
+      const updated = await apiUpdateUser(account.id, {
+        name: name.trim(), email: email.trim(), jobTitle: jobTitle.trim() || "Team member",
+        color, role, active, ...(password ? { password } : {}),
+      });
+      onSaved(updated);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not update user");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title="Edit user" onClose={onClose} narrow>
+      {error && <div className="form-error">{error}</div>}
+      <div className="form-field"><label>Name</label><input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></div>
+      <div className="form-field"><label>Email</label><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></div>
+      <div className="form-field"><label>Job title</label><input value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} /></div>
+      <div className="form-field"><label>Profile color</label><div className="color-field"><input type="color" value={color} onChange={(event) => setColor(event.target.value)} /><input value={color} onChange={(event) => setColor(event.target.value)} /></div></div>
+      <div className="form-field"><label>System access</label><select value={role} onChange={(event) => setRole(event.target.value as SystemRole)}><option value="USER">Normal user</option><option value="ADMIN">Administrator</option></select></div>
+      <label className="checkbox-row"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Active account</label>
+      <div className="form-field"><label>New password</label><input type="password" minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Leave blank to keep current password" />{password && password.length < 8 && <small>At least 8 characters.</small>}</div>
+      <div className="modal-actions"><button className="btn" onClick={onClose}>Cancel</button><button className="btn btn-primary" onClick={() => void submit()} disabled={saving || !name.trim() || !email.trim() || (!!password && password.length < 8)}>{saving ? "Saving…" : "Save changes"}</button></div>
+    </Modal>
   );
 }
 

@@ -43,6 +43,19 @@ export async function apiMe(): Promise<AuthUser> {
   return result.user;
 }
 
+export async function apiUpdateMe(input: {
+  name: string;
+  email: string;
+  currentPassword?: string;
+  newPassword?: string;
+}): Promise<AuthUser> {
+  const result = await request<{ user: AuthUser }>("/api/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  return result.user;
+}
+
 export function apiLogout(): Promise<void> {
   return request<void>("/api/auth/logout", { method: "POST" });
 }

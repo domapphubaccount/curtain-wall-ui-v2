@@ -69,6 +69,7 @@ async function claimRevision(
 
 function storyData(story: StoryBody): Prisma.StoryUncheckedUpdateInput {
   return {
+    key: story.key,
     title: story.title,
     description: story.description,
     type: story.type,
@@ -98,14 +99,21 @@ async function hasForeignOwnedIds(projectId: string, body: ProjectBody): Promise
   return epics + members + sprints + stories > 0;
 }
 
-projectsRouter.get("/", async (_req, res) => {
-  const projects = await prisma.project.findMany({ include: PROJECT_INCLUDE, orderBy: { updatedAt: "desc" } });
+projectsRouter.get("/", async (req: AuthenticatedRequest, res) => {
+  const projects = await prisma.project.findMany({
+    where: isAdmin(req) ? undefined : { members: { some: { userId: req.authUser?.id } } },
+    include: PROJECT_INCLUDE,
+    orderBy: { updatedAt: "desc" },
+  });
   res.json(projects.map(serializeProject));
 });
 
-projectsRouter.get("/:id", async (req, res) => {
+projectsRouter.get("/:id", async (req: AuthenticatedRequest, res) => {
   const project = await prisma.project.findUnique({ where: { id: req.params.id }, include: PROJECT_INCLUDE });
   if (!project) return res.status(404).json({ error: "Project not found" });
+  if (!isAdmin(req) && !project.members.some((member) => member.userId === req.authUser?.id)) {
+    return res.status(403).json({ error: "You are not a member of this project" });
+  }
   res.json(serializeProject(project));
 });
 
@@ -170,11 +178,14 @@ projectsRouter.put("/:id", async (req: AuthenticatedRequest, res) => {
   if (!current) return res.status(404).json({ error: "Project not found" });
 
   if (!isAdmin(req)) {
+    if (!current.members.some((member) => member.userId === req.authUser?.id)) {
+      return res.status(403).json({ error: "You are not a member of this project" });
+    }
     const serialized = serializeProject(current);
     const stableProjectFields =
       body.name === serialized.name && body.key === serialized.key && body.seq === serialized.seq &&
       same(body.epics, serialized.epics) && same(body.members, serialized.members) &&
-      same(body.sprints, serialized.sprints) && same(body.whiteboards, serialized.whiteboards) && same(body.files, serialized.files);
+      same(body.sprints, serialized.sprints) && same(body.files, serialized.files);
     if (!stableProjectFields || body.stories.length !== serialized.stories.length) {
       return res.status(403).json({ error: "You may only edit tasks assigned to you" });
     }
@@ -195,7 +206,10 @@ projectsRouter.put("/:id", async (req: AuthenticatedRequest, res) => {
 
     try {
       await prisma.$transaction(async (tx) => {
-        await claimRevision(tx, id, body.revision);
+        await claimRevision(tx, id, body.revision, {
+          whiteboards: body.whiteboards,
+          activeWhiteboardId: body.activeWhiteboardId,
+        });
         for (const story of changedStories) {
           await tx.story.update({ where: { id: story.id }, data: storyData(story) });
         }

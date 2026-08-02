@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useReducer, useState } from "react";
 import type { ReactNode } from "react";
-import type { AppState, Attachment, Epic, ID, Member, Project, Sprint, Story, StoryStatus, WBEdge, WBGroup, WBNode, Whiteboard, WhiteboardKind } from "./types";
+import type { AppState, Attachment, AuthUser, Epic, ID, Member, Project, Sprint, Story, StoryStatus, WBEdge, WBGroup, WBNode, Whiteboard, WhiteboardKind } from "./types";
 import { emptyWhiteboard } from "./types";
 import { createSeedState } from "./data";
 import { apiCreateProject, apiDeleteProject, apiGetProject, apiListProjects, apiSyncProject } from "./api";
@@ -51,7 +51,8 @@ export type Action =
   | { type: "file/delete"; id: ID }
   | { type: "state/reset" }
   | { type: "project/hydrate"; project: Project }
-  | { type: "projects/hydrateAll"; projects: Project[] };
+  | { type: "projects/hydrateAll"; projects: Project[] }
+  | { type: "user/profileUpdated"; user: AuthUser };
 
 export function uid(): string {
   return Math.random().toString(36).slice(2, 10);
@@ -268,10 +269,19 @@ function reducer(state: AppState, action: Action): AppState {
     case "project/update":
       return withProject(state, (p) => {
         const next = { ...p, ...action.patch };
+        if (action.patch.key && action.patch.key !== p.key) {
+          const oldPrefix = `${p.key}-`;
+          next.stories = p.stories.map((story) => {
+            const issueNumber = story.key.startsWith(oldPrefix)
+              ? story.key.slice(oldPrefix.length)
+              : story.key.match(/(\d+)$/)?.[1];
+            return issueNumber ? { ...story, key: `${action.patch.key}-${issueNumber}` } : story;
+          });
+        }
         if (action.patch.members) {
           // Unassign stories whose owner was removed from the team.
           const ids = new Set(action.patch.members.map((m) => m.id));
-          next.stories = p.stories.map((s) =>
+          next.stories = next.stories.map((s) =>
             s.assigneeId && !ids.has(s.assigneeId) ? { ...s, assigneeId: null } : s
           );
         }
@@ -406,6 +416,16 @@ function reducer(state: AppState, action: Action): AppState {
           : projects[0]?.id ?? "",
       };
     }
+    case "user/profileUpdated":
+      return {
+        ...state,
+        projects: state.projects.map((project) => ({
+          ...project,
+          members: project.members.map((member) => member.userId === action.user.id
+            ? { ...member, name: action.user.name, email: action.user.email }
+            : member),
+        })),
+      };
     default:
       return state;
   }
@@ -541,6 +561,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const apiDispatch = useCallback((action: Action) => {
     const currentProject = state.projects.find((project) => project.id === state.currentProjectId);
     const isAdmin = user?.role === "ADMIN";
+    const isProjectMember = !!user && !!currentProject?.members.some((member) => member.userId === user.id);
+    const whiteboardAction = action.type.startsWith("wb/");
     const storyAction = action.type.startsWith("story/");
     const storyId = storyAction && "id" in action ? action.id : null;
     const story = storyId ? currentProject?.stories.find((item) => item.id === storyId) : undefined;
@@ -550,7 +572,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const assignedToCurrentUser = !!user && assignee?.userId === user.id;
     const userEditableStoryAction = ["story/update", "story/move", "story/assignSprint", "story/timerStart", "story/timerStop"].includes(action.type);
     const triesToReassign = action.type === "story/update" && action.patch.assigneeId !== undefined && action.patch.assigneeId !== story?.assigneeId;
-    const allowed = isAdmin || action.type === "project/switch" || action.type === "wb/setActiveBoard" || (assignedToCurrentUser && userEditableStoryAction && !triesToReassign);
+    const allowed = isAdmin || action.type === "project/switch" || action.type === "user/profileUpdated" || (isProjectMember && whiteboardAction) || (assignedToCurrentUser && userEditableStoryAction && !triesToReassign);
     if (!allowed) return;
 
     if (action.type === "project/delete") {

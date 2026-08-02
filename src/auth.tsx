@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { ApiError, apiLogin, apiLogout, apiMe } from "./api";
+import { ApiError, apiLogin, apiLogout, apiMe, apiUpdateMe } from "./api";
 import type { AuthUser } from "./types";
 
 interface AuthValue {
@@ -8,6 +8,7 @@ interface AuthValue {
   loading: boolean;
   login(email: string, password: string): Promise<void>;
   logout(): Promise<void>;
+  updateAccount(input: { name: string; email: string; currentPassword?: string; newPassword?: string }): Promise<AuthUser>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -40,6 +41,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } finally {
         setUser(null);
       }
+    },
+    async updateAccount(input) {
+      const updated = await apiUpdateMe(input);
+      setUser(updated);
+      return updated;
     },
   }), [user, loading]);
 
