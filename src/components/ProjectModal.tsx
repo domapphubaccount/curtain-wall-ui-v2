@@ -41,10 +41,11 @@ export default function ProjectModal({ mode, onClose }: Props) {
 
   function save() {
     if (!name.trim() || !key.trim()) return;
+    const existingMembers = project?.members ?? [];
     const members: Member[] = users
       .filter((user) => user.active && selectedUserIds.has(user.id))
       .map((user) => {
-        const existing = project.members.find((member) => member.userId === user.id);
+        const existing = existingMembers.find((member) => member.userId === user.id);
         return {
           id: existing?.id ?? uid(),
           userId: user.id,

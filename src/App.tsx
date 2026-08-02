@@ -52,7 +52,7 @@ export default function App() {
           {state.projects.map((p) => (
             <div
               key={p.id}
-              className={`proj-item${p.id === project.id ? " active" : ""}`}
+              className={`proj-item${p.id === project?.id ? " active" : ""}`}
               role="button"
               tabIndex={0}
               onClick={() => dispatch({ type: "project/switch", id: p.id })}
@@ -62,7 +62,7 @@ export default function App() {
             >
               <span className="proj-key">{p.key}</span>
               <span className="proj-name">{p.name}</span>
-              {isAdmin && p.id === project.id && (
+              {isAdmin && p.id === project?.id && (
                 <button
                   className="proj-gear"
                   title="Project settings"
@@ -91,15 +91,21 @@ export default function App() {
         <header className="topbar">
           <div className="crumbs">
             <span className="crumb"><span className="ws-badge">S</span> SprintForge</span>
-            <span className="sep">/</span>
-            <span className="crumb">{project.name}</span>
+            {project && (
+              <>
+                <span className="sep">/</span>
+                <span className="crumb">{project.name}</span>
+              </>
+            )}
             <span className="sep">/</span>
             <span className="crumb current">
               {currentNav.icon} {currentNav.label}
             </span>
           </div>
           <div className="topbar-actions">
-            {isAdmin && <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}>Add Task</button>}
+            {isAdmin && project && (
+              <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}>Add Task</button>
+            )}
           </div>
         </header>
         <nav className="view-tabs">
@@ -115,19 +121,35 @@ export default function App() {
         </nav>
         <main className="main">
           {error && <div className="sync-error" role="alert">{error}</div>}
-          {view === "dashboard" && <Dashboard onNavigate={setView} />}
-          {view === "backlog" && <Backlog />}
-          {view === "board" && <Board />}
-          {view === "gantt" && <Gantt />}
-          {view === "whiteboard" && <Whiteboard />}
-          {view === "files" && <Files />}
-          {view === "team" && <Team />}
-          {view === "reports" && <Reports />}
+          {!project ? (
+            <div className="empty-state">
+              <h1>No project found</h1>
+              <p>{isAdmin ? "Create a project to get started." : "Ask an administrator to add you to a project."}</p>
+              {isAdmin && (
+                <button className="btn btn-primary" onClick={() => setProjectModal("create")}>
+                  Create project
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              {view === "dashboard" && <Dashboard onNavigate={setView} />}
+              {view === "backlog" && <Backlog />}
+              {view === "board" && <Board />}
+              {view === "gantt" && <Gantt />}
+              {view === "whiteboard" && <Whiteboard />}
+              {view === "files" && <Files />}
+              {view === "team" && <Team />}
+              {view === "reports" && <Reports />}
+            </>
+          )}
         </main>
       </div>
 
-      {projectModal && <ProjectModal mode={projectModal} onClose={() => setProjectModal(null)} />}
-      {showCreate && <StoryModal story={null} onClose={() => setShowCreate(false)} />}
+      {projectModal && (projectModal === "create" || project) && (
+        <ProjectModal mode={projectModal} onClose={() => setProjectModal(null)} />
+      )}
+      {showCreate && project && <StoryModal story={null} onClose={() => setShowCreate(false)} />}
     </div>
   );
 }
