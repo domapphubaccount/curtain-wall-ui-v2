@@ -3,7 +3,7 @@ import { stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 
-const port = Number(process.env.PORT) || 8080;
+const port = Number(process.env.PORT) || 5173;
 const distDirectory = join(process.cwd(), "dist");
 
 const contentTypes = {

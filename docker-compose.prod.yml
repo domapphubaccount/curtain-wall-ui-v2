@@ -71,9 +71,9 @@ services:
     restart: unless-stopped
     init: true
     environment:
-      PORT: 8080
+      PORT: 5173
     ports:
-      - "127.0.0.1:${HTTP_PORT:-8080}:8080"
+      - "127.0.0.1:${HTTP_PORT:-5173}:5173"
 
 volumes:
   postgres_data:

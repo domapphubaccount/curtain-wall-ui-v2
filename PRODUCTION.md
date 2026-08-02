@@ -8,12 +8,12 @@ installation for TLS.
 ```text
 Internet :443
   -> host Nginx (TLS)
-       / and SPA routes -> 127.0.0.1:8080 (frontend)
+       / and SPA routes -> 127.0.0.1:5173 (frontend)
        /api/*           -> 127.0.0.1:4000 (API)
   -> PostgreSQL :5432 on an internal Docker network only
 ```
 
-Only ports 80/443 of the host Nginx should be public. Frontend port 8080 and API port 4000 bind to
+Only ports 80/443 of the host Nginx should be public. Frontend port 5173 and API port 4000 bind to
 localhost. PostgreSQL remains on an internal Docker network.
 
 ## First deployment
@@ -37,8 +37,8 @@ docker compose --env-file .env.production -f docker-compose.prod.yml logs -f api
 The API applies committed Prisma migrations and creates the initial administrator idempotently.
 Demo data is disabled.
 
-For an HTTP-only private smoke test, set `COOKIE_SECURE=false`, keep `HTTP_PORT=8080`, and browse to
-`http://127.0.0.1:8080` from the host. Never use this HTTP mode over the public internet.
+For an HTTP-only private smoke test, set `COOKIE_SECURE=false`, keep `HTTP_PORT=5173`, and browse to
+`http://127.0.0.1:5173` from the host. Never use this HTTP mode over the public internet.
 
 ## Operations
 
